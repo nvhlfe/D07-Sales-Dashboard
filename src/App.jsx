@@ -11,17 +11,13 @@ import SalesReportTab from './components/SalesReportTab'
 
 // ── Firebase config — tự động kết nối cho tất cả users ──────
 const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyATiRLxaaZ65ymXQqakhRTvl7nx_SvrIhw",
-  authDomain: "d07-sale-dashboard.firebaseapp.com",
-  // ⚠️ TODO: điền databaseURL thật của project d07-sale-dashboard sau khi bật Realtime Database
-  // (Console → Build → Realtime Database → Create Database). Dạng:
-  // https://d07-sale-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app
-  databaseURL: "https://d07-sale-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "d07-sale-dashboard",
-  storageBucket: "d07-sale-dashboard.firebasestorage.app",
-  messagingSenderId: "515206620416",
-  appId: "1:515206620416:web:e7322219254d4db5613fe5",
-}
+  apiKey: "AIzaSyASY63DlWIkvjybM1enPIpdZkxXJjrStQA",
+  authDomain: "d07-sales-dashboard.firebaseapp.com",
+  databaseURL: "https://d07-sales-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "d07-sales-dashboard",
+  storageBucket: "d07-sales-dashboard.firebasestorage.app",
+  messagingSenderId: "820808715064",
+  appId: "1:820808715064:web:62865b8b03b18b6a670fcd"
 const ADMIN_EMAIL = 'admin@d07.com'
 // ─────────────────────────────────────────────────────────────
 
