@@ -17,7 +17,8 @@ const FIREBASE_CONFIG = {
   projectId: "d07-sales-dashboard",
   storageBucket: "d07-sales-dashboard.firebasestorage.app",
   messagingSenderId: "820808715064",
-  appId: "1:820808715064:web:62865b8b03b18b6a670fcd"
+  appId: "1:820808715064:web:62865b8b03b18b6a670fcd",
+}
 const ADMIN_EMAIL = 'admin@d07.com'
 // ─────────────────────────────────────────────────────────────
 

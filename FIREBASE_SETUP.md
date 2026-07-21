@@ -2,7 +2,7 @@
 
 ## Bước 1 — Tạo Firebase Project
 1. Vào https://console.firebase.google.com
-2. Click **"Add project"** → đặt tên (vd: `d07-sale-dashboard`) → Continue → Create project
+2. Click **"Add project"** → đặt tên (vd: `d07-sales-dashboard`) → Continue → Create project
 
 ## Bước 2 — Bật Realtime Database
 1. Sidebar trái → **Build → Realtime Database**
@@ -18,10 +18,10 @@
 ```js
 const firebaseConfig = {
   apiKey: "AIza...",
-  authDomain: "d07-sale-dashboard.firebaseapp.com",
-  databaseURL: "https://d07-sale-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "d07-sale-dashboard",
-  storageBucket: "d07-sale-dashboard.appspot.com",
+  authDomain: "d07-sales-dashboard.firebaseapp.com",
+  databaseURL: "https://d07-sales-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "d07-sales-dashboard",
+  storageBucket: "d07-sales-dashboard.appspot.com",
   messagingSenderId: "123456789",
   appId: "1:123:web:abc"
 };
