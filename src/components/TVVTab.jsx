@@ -26,11 +26,46 @@ function fmtPct(val) {
   return (n * 100).toFixed(2) + '%'
 }
 
+// Xếp hạng bậc PE (dùng để sort các cột kiểu badge)
+function peRank(val) {
+  const v = String(val || '').toUpperCase()
+  if (v.includes('KIM CƯƠNG')) return 3
+  if (v.includes('BẠCH KIM')) return 2
+  if (v.includes('VÀNG') || v.includes('VANG')) return 1
+  return 0
+}
+
+// Các cột TVV hỗ trợ sắp xếp cao→thấp / thấp→cao
+const TVV_SORTERS = {
+  peHienTai:     ag => peRank(ag.peHienTai),
+  ketQuaTamTinh: ag => peRank(ag.ketQuaTamTinh),
+  fyc12m:        ag => parseFloat(ag.fyc12m) || 0,
+  fyc:           ag => parseFloat(ag.fyc) || 0,
+  mucHoTro:      ag => parseFloat(ag.mucHoTro) || 0,
+}
+
+function SortableTh({ field, label, sortField, sortDir, onSort }) {
+  const active = sortField === field
+  return (
+    <th
+      onClick={() => onSort(field)}
+      style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+      title="Click để sắp xếp"
+    >
+      {label} <span style={{ fontSize: 9, color: active ? '#4361ee' : '#c5cde8' }}>
+        {active ? (sortDir === 'desc' ? '▼' : '▲') : '↕'}
+      </span>
+    </th>
+  )
+}
+
 export default function TVVTab({ data }) {
   const [selected, setSelected] = useState(null)
   const [search, setSearch] = useState('')
   const [filterPE, setFilterPE] = useState('all')
   const [filterUnit, setFilterUnit] = useState('all')
+  const [sortField, setSortField] = useState(null)
+  const [sortDir, setSortDir] = useState('desc')
 
   const agList = data?.agList || []
   const peOptions = ['all', ...new Set(agList.map(a => a.peHienTai).filter(Boolean))]
@@ -43,6 +78,22 @@ export default function TVVTab({ data }) {
     const matchUnit = filterUnit === 'all' || ag.unit === filterUnit
     return matchSearch && matchPE && matchUnit
   })
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'desc' ? 'asc' : 'desc')
+    } else {
+      setSortField(field)
+      setSortDir('desc')
+    }
+  }
+
+  const sorted = React.useMemo(() => {
+    if (!sortField) return filtered
+    const getter = TVV_SORTERS[sortField]
+    const arr = [...filtered].sort((a, b) => getter(a) - getter(b))
+    return sortDir === 'desc' ? arr.reverse() : arr
+  }, [filtered, sortField, sortDir])
 
   const bachKim = agList.filter(a => String(a.peHienTai || '').includes('BẠCH KIM')).length
   const vang = agList.filter(a => String(a.peHienTai || '').toUpperCase().includes('VÀNG')).length
@@ -112,21 +163,21 @@ export default function TVVTab({ data }) {
                 <th>Tên TVV</th>
                 <th>Mã ĐL</th>
                 <th>BM/Unit</th>
-                <th>PE Hiện tại</th>
-                <th>PE Tạm đạt</th>
-                <th>FYC L12M</th>
+                <SortableTh field="peHienTai" label="PE Hiện tại" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                <SortableTh field="ketQuaTamTinh" label="PE Tạm đạt" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                <SortableTh field="fyc12m" label="FYC L12M" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                 <th>Act T1</th>
                 <th>Act T2</th>
                 <th>Act T3</th>
                 <th>TLDTPTT</th>
-                <th>FYC Quý</th>
-                <th>Mức HT (%)</th>
+                <SortableTh field="fyc" label="FYC Quý" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                <SortableTh field="mucHoTro" label="Mức HT (%)" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                 <th>FYC Cần thêm</th>
                 <th>Vé Star Club</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((ag, i) => (
+              {sorted.map((ag, i) => (
                 <tr key={i} onClick={() => setSelected(ag)} style={{ cursor: 'pointer' }}>
                   <td style={{ color: '#8896aa' }}>{ag.no}</td>
                   <td><span className="agent-name-link">{ag.agentName}</span></td>

@@ -134,7 +134,7 @@ export default function DashboardTab({ data, onNavigate }) {
       <div className="card" style={{ marginBottom:16 }}>
         <div className="section-header">
           <div className="section-icon">🏆</div>
-          TOP 20 ĐẠI LÝ THEO FYP
+          TOP 60 ĐẠI LÝ THEO FYP
           {activeMonth && <span style={{ marginLeft:'auto', fontSize:10, color:'#8896aa', fontWeight:500 }}>
             T{activeMonth}/2026
           </span>}
@@ -176,7 +176,7 @@ export default function DashboardTab({ data, onNavigate }) {
           </tbody>
         </table>
         <div style={{ marginTop:10, fontSize:11.5, color:'#8896aa' }}>
-          Top 20 theo FYP · {top.length} đại lý · "FYC cần thêm" = 5 − FYC tháng (đơn vị triệu VND, ngưỡng PE Vàng)
+          Top 60 theo FYP · {top.length} đại lý · "FYC cần thêm" = 5 − FYC tháng (đơn vị triệu VND, ngưỡng PE Vàng)
         </div>
       </div>
 

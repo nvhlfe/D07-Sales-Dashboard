@@ -28,15 +28,71 @@ function fmtPct(val) {
   return n.toFixed(2) + '%'  // already converted to % in parseExcel
 }
 
+// Xếp hạng bậc PC (dùng để sort các cột kiểu badge)
+function pcRank(val) {
+  const v = String(val || '').toUpperCase()
+  if (v.includes('KIM CƯƠNG')) return 3
+  if (v.includes('BẠCH KIM')) return 2
+  if (v.includes('VÀNG') || v.includes('VANG')) return 1
+  return 0
+}
+
+function mocRank(val) {
+  const s = String(val || '')
+  return (s.includes('ü') || s.toLowerCase() === 'true') ? 1 : 0
+}
+
+// Các cột UM hỗ trợ sắp xếp cao→thấp / thấp→cao
+const UM_SORTERS = {
+  fycPhongTT: um => parseFloat(um.fycPhongTT) || 0,
+  pcTamDat:   um => pcRank(um.pcTamDat),
+  tongTvvAct: um => parseFloat(um.tongTvvAct) || 0,
+  mucHoTro:   um => parseFloat(um.mucHoTro) || 0,
+  moc_tamDat: um => mocRank(um.moc_tamDat),
+}
+
+function SortableTh({ field, label, sortField, sortDir, onSort }) {
+  const active = sortField === field
+  return (
+    <th
+      onClick={() => onSort(field)}
+      style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' }}
+      title="Click để sắp xếp"
+    >
+      {label} <span style={{ fontSize: 9, color: active ? '#4361ee' : '#c5cde8' }}>
+        {active ? (sortDir === 'desc' ? '▼' : '▲') : '↕'}
+      </span>
+    </th>
+  )
+}
+
 export default function UMTab({ data }) {
   const [selectedUM, setSelectedUM] = useState(null)
   const [search, setSearch] = useState('')
+  const [sortField, setSortField] = useState(null)
+  const [sortDir, setSortDir] = useState('desc')
   const umList = data?.umList || []
 
   const filtered = umList.filter(um =>
     !search || um.leaderName?.toLowerCase().includes(search.toLowerCase()) ||
     String(um.leaderCode).includes(search)
   )
+
+  const handleSort = (field) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'desc' ? 'asc' : 'desc')
+    } else {
+      setSortField(field)
+      setSortDir('desc')
+    }
+  }
+
+  const sorted = React.useMemo(() => {
+    if (!sortField) return filtered
+    const getter = UM_SORTERS[sortField]
+    const arr = [...filtered].sort((a, b) => getter(a) - getter(b))
+    return sortDir === 'desc' ? arr.reverse() : arr
+  }, [filtered, sortField, sortDir])
 
   const totalFyc = umList.reduce((s, u) => s + (parseFloat(u.fycPhongTT) || 0), 0)
   const totalThuong = umList.reduce((s, u) => s + (parseFloat(u.tienThuong) || 0), 0)
@@ -97,18 +153,18 @@ export default function UMTab({ data }) {
                 <th>Mã</th>
                 <th>BM/Unit</th>
                 <th>PC Hiện tại</th>
-                <th>FYC Phòng TT</th>
+                <SortableTh field="fycPhongTT" label="FYC Phòng TT" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                 <th>TLDTPTT</th>
-                 <th>PC Tạm đạt</th>
-                 <th>Tổng TVV HĐ</th>
+                 <SortableTh field="pcTamDat" label="PC Tạm đạt" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                 <SortableTh field="tongTvvAct" label="Tổng TVV HĐ" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                  <th>Lượt ACT cần</th>
                  <th>TVV CL cần thêm</th>
-                <th>Mức hỗ trợ</th>
-                <th>Duy trì (MOC)</th>
+                <SortableTh field="mucHoTro" label="Mức hỗ trợ" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                <SortableTh field="moc_tamDat" label="Duy trì (MOC)" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((um, i) => (
+              {sorted.map((um, i) => (
                 <tr key={i} onClick={() => setSelectedUM(um)} style={{ cursor: 'pointer' }}>
                   <td style={{ color: '#8896aa' }}>{um.stt}</td>
                   <td><span className="agent-name-link">{um.leaderName}</span></td>

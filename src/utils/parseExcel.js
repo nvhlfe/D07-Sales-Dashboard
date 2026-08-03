@@ -136,7 +136,7 @@ function extractData(wb) {
       agentMap[code].syc    += parseFloat(r[C.SYC])    || 0
     })
     result.topAgents = Object.values(agentMap)
-      .sort((a, b) => b.fyp - a.fyp).slice(0, 20)
+      .sort((a, b) => b.fyp - a.fyp).slice(0, 60)
       .map(a => ({ ...a, fyc: fmt2(a.fyc), fyp: fmt(a.fyp), ape: fmt(a.ape),
                           ipNet: fmt(a.ipNet), caseNet: fmt(a.caseNet), syc: fmt(a.syc) }))
 
@@ -199,7 +199,7 @@ function extractData(wb) {
       activeCase:  fmtInt(sum2(C.ACT_CASE)),
       mdrt:        d07rows.filter(r => r[C.MDRT] && r[C.MDRT] !== 'Not MDRT').length,
       topAgents:   Object.values(agMap)
-        .sort((a, b) => b.fyp - a.fyp).slice(0, 20)
+        .sort((a, b) => b.fyp - a.fyp).slice(0, 60)
         .map(a => ({ ...a, fyc: fmt2(a.fyc), fyp: fmt(a.fyp), ape: fmt(a.ape),
                             ipNet: fmt(a.ipNet), caseNet: fmt(a.caseNet), syc: fmt(a.syc) })),
       officeData: [{
