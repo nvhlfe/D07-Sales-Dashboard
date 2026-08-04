@@ -8,6 +8,7 @@ import GATab from './components/GATab'
 import UMTab from './components/UMTab'
 import TVVTab from './components/TVVTab'
 import SalesReportTab from './components/SalesReportTab'
+import PendingTab from './components/PendingTab'
 
 // ── Firebase config — tự động kết nối cho tất cả users ──────
 const FIREBASE_CONFIG = {
@@ -28,11 +29,13 @@ const NAV_ITEMS = [
   { id: 'um',        label: 'UM',        icon: '👤' },
   { id: 'tvv',       label: 'TVV',       icon: '🧑‍💼' },
   { id: 'sales',     label: 'Sales Report', icon: '📋' },
+  { id: 'pending',   label: 'Pending',   icon: '⏳' },
 ]
 const TAB_TITLES = {
   dashboard: 'Dashboard Tổng Quan — GA D07 Quận 7',
   ga: 'GA Tổng Hợp', um: 'Danh Sách UM', tvv: 'Danh Sách TVV',
   sales: 'D07 — Theo Dõi Doanh Số 2026',
+  pending: 'Theo Dõi Hồ Sơ Đang Chờ',
 }
 
 const EMPTY_DATA = {
@@ -599,6 +602,7 @@ export default function App() {
             {activeTab === 'um'        && <UMTab        data={data} />}
             {activeTab === 'tvv'       && <TVVTab       data={data} />}
             {activeTab === 'sales'     && <SalesReportTab />}
+            {activeTab === 'pending'   && <PendingTab />}
           </ErrorBoundary>
         )}
 

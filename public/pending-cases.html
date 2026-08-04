@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Theo dõi hồ sơ đang chờ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;800&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --maroon:#7a1226;
+    --maroon-dark:#4f0b18;
+    --ink:#20191b;
+    --paper:#faf7f3;
+    --paper-dim:#f1ece5;
+    --line:#e4dcd2;
+    --new:#2f6f4e;
+    --new-bg:#e7f3ec;
+    --gone-bg:#f6e9e4;
+    --gone:#a24a2c;
+    --gold:#b8862f;
+    --mono: 'Roboto Mono', 'SFMono-Regular', Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:'Roboto',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    background:var(--paper); color:var(--ink);
+  }
+  header{
+    background:linear-gradient(135deg,var(--maroon),var(--maroon-dark));
+    color:#fff; padding:22px 28px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px;
+  }
+  header h1{margin:0; font-size:19px; font-weight:700; letter-spacing:.2px}
+  header .sub{font-size:12px; opacity:.8; margin-top:3px; font-family:var(--mono)}
+  .toolbar{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  .btn{
+    background:#fff; color:var(--maroon-dark); border:none; padding:9px 16px; border-radius:7px;
+    font-size:13px; font-weight:600; cursor:pointer; transition:transform .1s, box-shadow .15s;
+  }
+  .btn:hover{box-shadow:0 3px 10px rgba(0,0,0,.18); transform:translateY(-1px)}
+  .btn.ghost{background:rgba(255,255,255,.12); color:#fff; border:1px solid rgba(255,255,255,.4)}
+  .btn.danger{background:#fff; color:#a83232}
+  input[type=file]{display:none}
+  input[type=date]{
+    border:1px solid rgba(255,255,255,.5); background:rgba(255,255,255,.1); color:#fff;
+    padding:8px 10px; border-radius:7px; font-size:13px;
+  }
+  input[type=date]::-webkit-calendar-picker-indicator{filter:invert(1)}
+
+  main{padding:22px 28px 60px}
+  .stats{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:22px;
+  }
+  .stat{
+    background:#fff; border:1px solid var(--line); border-radius:10px; padding:14px 16px;
+  }
+  .stat .n{font-size:24px; font-weight:800; font-family:var(--mono)}
+  .stat .l{font-size:11.5px; color:#8a7f74; margin-top:2px; text-transform:uppercase; letter-spacing:.4px}
+  .stat.new .n{color:var(--new)}
+  .stat.gone .n{color:var(--gone)}
+
+  .panel{
+    background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:22px;
+  }
+  .panel-head{
+    padding:14px 18px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  }
+  .panel-head h2{margin:0; font-size:14.5px; font-weight:700}
+  .panel-head .count{font-size:12px; color:#8a7f74; font-family:var(--mono)}
+  .controls{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .controls input[type=text], .controls select{
+    border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:12.5px; background:var(--paper-dim);
+  }
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px}
+  thead th{
+    text-align:left; padding:9px 10px; background:var(--paper-dim); border-bottom:1px solid var(--line);
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; color:#7a6f63; white-space:nowrap; position:sticky; top:0;
+  }
+  tbody td{padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:top}
+  tbody tr:hover{background:#fbf5ee}
+  tbody tr.is-new{box-shadow:inset 3px 0 0 var(--new); background:var(--new-bg)}
+  tbody tr.is-new:hover{background:#dcefe4}
+  tbody tr.is-gone{background:var(--gone-bg); opacity:.85}
+  tbody tr.is-gone:hover{background:#f1ddd3}
+  .mono{font-family:var(--mono)}
+  .tag{
+    display:inline-block; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:20px; letter-spacing:.3px;
+  }
+  .tag.new{background:var(--new); color:#fff}
+  .tag.big{background:var(--gold); color:#fff}
+  .tag.normal{background:#e4dcd2; color:#5a4f45}
+  .tag.gone{background:var(--gone); color:#fff}
+  .reason{max-width:280px}
+  .reason .desc{font-weight:600}
+  .reason .detail{color:#8a7f74; font-size:11px; margin-top:2px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; cursor:pointer}
+  .reason .detail.open{-webkit-line-clamp:unset}
+  select.status{
+    border:1px solid var(--line); border-radius:6px; padding:5px 6px; font-size:12px; font-family:var(--mono); font-weight:700; background:#fff;
+  }
+  select.status[value=""]{color:#aaa}
+  .dismiss-btn{
+    border:none; background:none; color:var(--gone); font-size:11px; cursor:pointer; text-decoration:underline; padding:0;
+  }
+  .empty{padding:40px; text-align:center; color:#9a8f83; font-size:13px}
+  .dropzone{
+    margin:0 28px 22px; border:2px dashed var(--line); border-radius:14px; padding:34px; text-align:center; color:#8a7f74;
+    background:#fff; cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  .dropzone.drag{border-color:var(--maroon); background:var(--new-bg)}
+  .dropzone strong{color:var(--maroon-dark)}
+  .history{font-size:11.5px; color:#8a7f74; font-family:var(--mono); padding:10px 18px; border-top:1px solid var(--line)}
+  .history b{color:var(--ink)}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Theo dõi hồ sơ đang chờ (Pending Cases)</h1>
+    <div class="sub" id="lastUpdated">Chưa có dữ liệu</div>
+  </div>
+  <div class="toolbar">
+    <label class="sub" style="color:#fff;opacity:.85">Ngày dữ liệu:
+      <input type="date" id="dataDate">
+    </label>
+    <button class="btn" onclick="document.getElementById('fileInput').click()">⇪ Tải file Excel</button>
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <button class="btn ghost" onclick="exportCSV()">Xuất CSV</button>
+    <button class="btn danger" onclick="resetAll()">Xóa dữ liệu</button>
+  </div>
+</header>
+
+<div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+  Kéo thả file Excel vào đây, hoặc bấm để chọn file — <strong>upload mỗi ngày</strong> để dashboard tự so sánh và đánh dấu hồ sơ mới / hồ sơ đã biến mất so với lần trước.
+</div>
+
+<main>
+  <div class="stats" id="stats"></div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h2>Hồ sơ đang chờ xử lý</h2>
+      <div class="controls">
+        <input type="text" id="search" placeholder="Tìm AG, số HS, sản phẩm, lý do..." oninput="render()">
+        <select id="filterClassify" onchange="render()">
+          <option value="">Tất cả phân loại</option>
+          <option value="Normal Case">Normal Case</option>
+          <option value="Big Case">Big Case</option>
+        </select>
+        <select id="filterStatus" onchange="render()">
+          <option value="">Tất cả trạng thái</option>
+          <option value="">— Chưa cập nhật —</option>
+          <option value="IF">IF</option>
+          <option value="PO">PO</option>
+          <option value="WD">WD</option>
+          <option value="CFI">CFI</option>
+          <option value="PS">PS</option>
+        </select>
+        <select id="sortBy" onchange="render()">
+          <option value="new">Sắp xếp: Mới trước</option>
+          <option value="ag">Sắp xếp: AG (A→Z)</option>
+          <option value="ape">Sắp xếp: APE (cao→thấp)</option>
+        </select>
+        <span class="count" id="pendingCount"></span>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table id="pendingTable">
+        <thead>
+          <tr>
+            <th></th>
+            <th>UM/AG</th>
+            <th>Số HS</th>
+            <th>Số HĐ</th>
+            <th>Ngày YCBH</th>
+            <th>Sản phẩm</th>
+            <th>APE (tr)</th>
+            <th>PO</th>
+            <th>Lý do chờ</th>
+            <th>Phân loại</th>
+            <th>Trạng thái</th>
+          </tr>
+        </thead>
+        <tbody id="pendingBody"></tbody>
+      </table>
+      <div class="empty" id="pendingEmpty" style="display:none">Chưa có dữ liệu — tải file Excel để bắt đầu.</div>
+    </div>
+  </div>
+
+  <div class="panel" id="goneWrap" style="display:none">
+    <div class="panel-head">
+      <h2>Đã biến mất khỏi danh sách (có thể đã xử lý xong / rút hồ sơ)</h2>
+      <span class="count" id="goneCount"></span>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>UM/AG</th><th>Số HS</th><th>Số HĐ</th><th>Sản phẩm</th><th>APE (tr)</th><th>Lý do chờ (lần cuối)</th>
+            <th>Trạng thái</th><th>Biến mất từ</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="goneBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="history" id="historyLine"></div>
+</main>
+
+<script>
+const LS_SNAP = 'pcd_snapshots';   // { 'YYYY-MM-DD': [case,...] }
+const LS_STATUS = 'pcd_statuses';  // { proposalNum: 'IF'|'PO'|... }
+const LS_GONE = 'pcd_gone';        // { proposalNum: {...caseData, resolvedDate} }
+
+function loadJSON(key, fallback){
+  try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }catch(e){ return fallback; }
+}
+function saveJSON(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+
+let snapshots = loadJSON(LS_SNAP, {});
+let statuses = loadJSON(LS_STATUS, {});
+let goneMap = loadJSON(LS_GONE, {});
+
+const dateInput = document.getElementById('dataDate');
+dateInput.value = todayStr();
+
+function todayStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function fmtDateVN(iso){
+  if(!iso) return '';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function fmtProposalDate(v){
+  // stored as int YYYYMMDD
+  const s = String(v||'');
+  if(s.length!==8) return s;
+  return `${s.slice(6,8)}/${s.slice(4,6)}/${s.slice(0,4)}`;
+}
+
+// ---------- File parsing ----------
+const fileInput = document.getElementById('fileInput');
+const dropzone = document.getElementById('dropzone');
+fileInput.addEventListener('change', e=>{ if(e.target.files[0]) handleFile(e.target.files[0]); });
+dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e=>{
+  e.preventDefault(); dropzone.classList.remove('drag');
+  if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+function handleFile(file){
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    try{
+      const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
+      const sheetName = wb.SheetNames.includes('Export') ? 'Export' : wb.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null});
+      const cases = parseRows(rows);
+      if(cases.length===0){ alert('Không đọc được dòng dữ liệu nào từ file. Kiểm tra lại định dạng.'); return; }
+      importSnapshot(cases, dateInput.value || todayStr());
+    }catch(err){
+      alert('Lỗi khi đọc file: '+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseRows(rows){
+  // find header row: contains ProposalNum and AGCode
+  let headerIdx = -1, headerMap = {};
+  for(let i=0;i<rows.length;i++){
+    const row = rows[i] || [];
+    const norm = row.map(c=> (c==null? '' : String(c).trim()));
+    if(norm.includes('ProposalNum') && norm.includes('AGCode')){
+      headerIdx = i;
+      norm.forEach((name, idx)=>{ if(name && headerMap[name]===undefined) headerMap[name]=idx; });
+      break;
+    }
+  }
+  if(headerIdx===-1) return [];
+  const get = (row, name)=> headerMap[name]!==undefined ? row[headerMap[name]] : null;
+  const cases = [];
+  for(let i=headerIdx+1;i<rows.length;i++){
+    const row = rows[i];
+    if(!row || row.length===0) continue;
+    const first = row[0];
+    if(first==null || first==='' ) continue;
+    if(String(first).trim()==='Total') break;
+    if(String(first).toLowerCase().startsWith('applied filters')) break;
+    const proposalNum = get(row,'ProposalNum');
+    if(proposalNum==null || proposalNum==='') continue;
+    const pendingReasons = ['Compliance','Internal Pending','Medical Check','Medical Info','Personal Info','IndependentCall','Voice Recording']
+      .map(k=>({k, v:get(row,k)}))
+      .filter(x=>x.v!=null && String(x.v).trim()!=='')
+      .map(x=>`${x.k}: ${x.v}`);
+    cases.push({
+      key: String(proposalNum),
+      agCode: get(row,'AGCode'),
+      agName: get(row,'AGName'),
+      officeCode: get(row,'OfficeCode'),
+      policyNum: get(row,'PolicyNum'),
+      proposalNum: proposalNum,
+      proposalDate: get(row,'ProposalDate'),
+      basicProductCode: get(row,'BasicProductCode'),
+      productName: get(row,'ProductNameVN'),
+      ape: get(row,'APE (mil)'),
+      unitCode: get(row,'UnitCode'),
+      poName: get(row,'POName'),
+      description: get(row,'Description'),
+      classify: get(row,'Classify'),
+      detail: pendingReasons.join(' | ')
+    });
+  }
+  return cases;
+}
+
+// ---------- Snapshot import + diff ----------
+function importSnapshot(cases, dateStr){
+  const byKey = {};
+  cases.forEach(c=> byKey[c.key]=c);
+  snapshots[dateStr] = cases;
+  saveJSON(LS_SNAP, snapshots);
+
+  // find previous snapshot date (most recent date strictly before dateStr)
+  const priorDates = Object.keys(snapshots).filter(d=> d < dateStr).sort();
+  const priorDate = priorDates.length ? priorDates[priorDates.length-1] : null;
+  const priorCases = priorDate ? snapshots[priorDate] : [];
+  const priorByKey = {}; priorCases.forEach(c=> priorByKey[c.key]=c);
+
+  // cases that disappeared: in prior, not in current -> add/update goneMap
+  priorCases.forEach(c=>{
+    if(!byKey[c.key]){
+      if(!goneMap[c.key]){
+        goneMap[c.key] = Object.assign({}, c, {resolvedDate: dateStr});
+      }
+    }
+  });
+  // cases that reappeared: if in current and also in goneMap, remove from goneMap
+  cases.forEach(c=>{ if(goneMap[c.key]) delete goneMap[c.key]; });
+  saveJSON(LS_GONE, goneMap);
+
+  saveJSON('pcd_lastDate', dateStr);
+  saveJSON('pcd_priorDate', priorDate || '');
+  render();
+}
+
+function statusSelect(key){
+  const val = statuses[key] || '';
+  const opts = ['','IF','PO','WD','CFI','PS'];
+  return `<select class="status" onchange="setStatus('${key}',this.value)">` +
+    opts.map(o=>`<option value="${o}" ${o===val?'selected':''}>${o||'—'}</option>`).join('') +
+    `</select>`;
+}
+function setStatus(key, val){
+  if(val) statuses[key]=val; else delete statuses[key];
+  saveJSON(LS_STATUS, statuses);
+}
+
+function dismissGone(key){
+  delete goneMap[key];
+  saveJSON(LS_GONE, goneMap);
+  render();
+}
+
+function toggleDetail(el){ el.classList.toggle('open'); }
+
+// ---------- Render ----------
+function render(){
+  const lastDate = loadJSON('pcd_lastDate', null) || Object.keys(snapshots).sort().pop() || null;
+  const priorDate = loadJSON('pcd_priorDate', '') || '';
+  const current = lastDate ? (snapshots[lastDate]||[]) : [];
+  const priorKeys = new Set((priorDate ? snapshots[priorDate] : [] || []).map(c=>c.key));
+
+  document.getElementById('lastUpdated').textContent = lastDate
+    ? `Dữ liệu mới nhất: ${fmtDateVN(lastDate)}${priorDate? ' · so với '+fmtDateVN(priorDate) : ' · chưa có dữ liệu trước để so sánh'}`
+    : 'Chưa có dữ liệu';
+
+  const search = document.getElementById('search').value.trim().toLowerCase();
+  const fClassify = document.getElementById('filterClassify').value;
+  const fStatus = document.getElementById('filterStatus').value;
+
+  let rows = current.filter(c=>{
+    if(fClassify && c.classify!==fClassify) return false;
+    if(fStatus && (statuses[c.key]||'')!==fStatus) return false;
+    if(search){
+      const hay = [c.agCode,c.agName,c.proposalNum,c.policyNum,c.productName,c.description,c.detail,c.unitCode,c.poName]
+        .map(x=> x==null?'':String(x).toLowerCase()).join(' ');
+      if(!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  // sort
+  const sortBy = document.getElementById('sortBy').value;
+  if(sortBy==='ag'){
+    rows.sort((a,b)=> (a.agName||'').localeCompare(b.agName||'', 'vi'));
+  }else if(sortBy==='ape'){
+    rows.sort((a,b)=> (parseFloat(b.ape)||0)-(parseFloat(a.ape)||0));
+  }else{
+    rows.sort((a,b)=>{
+      const aNew = !priorKeys.has(a.key) && priorDate;
+      const bNew = !priorKeys.has(b.key) && priorDate;
+      if(aNew!==bNew) return aNew? -1:1;
+      return (parseFloat(b.ape)||0)-(parseFloat(a.ape)||0);
+    });
+  }
+
+  const body = document.getElementById('pendingBody');
+  document.getElementById('pendingEmpty').style.display = current.length? 'none':'block';
+  body.innerHTML = rows.map(c=>{
+    const isNew = priorDate && !priorKeys.has(c.key);
+    return `<tr class="${isNew?'is-new':''}">
+      <td>${isNew?'<span class="tag new">MỚI</span>':''}</td>
+      <td><div>${c.agName||''}</div><div class="mono" style="color:#9a8f83">${c.unitCode||''} / ${c.agCode||''}</div></td>
+      <td class="mono">${c.proposalNum||''}</td>
+      <td class="mono">${c.policyNum||''}</td>
+      <td class="mono">${fmtProposalDate(c.proposalDate)}</td>
+      <td>${c.productName||''}<div style="color:#9a8f83;font-size:11px">${c.basicProductCode||''}</div></td>
+      <td class="mono">${c.ape!=null? Number(c.ape).toLocaleString('vi-VN',{maximumFractionDigits:1}):''}</td>
+      <td>${c.poName||''}</td>
+      <td class="reason"><div class="desc">${c.description||''}</div>${c.detail?`<div class="detail" onclick="toggleDetail(this)">${c.detail}</div>`:''}</td>
+      <td>${c.classify==='Big Case'?'<span class="tag big">Big</span>':(c.classify?'<span class="tag normal">Normal</span>':'')}</td>
+      <td>${statusSelect(c.key)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('pendingCount').textContent = `${rows.length} / ${current.length} hồ sơ`;
+
+  // gone panel
+  const goneList = Object.values(goneMap).sort((a,b)=> (b.resolvedDate||'').localeCompare(a.resolvedDate||''));
+  document.getElementById('goneWrap').style.display = goneList.length? 'block':'none';
+  document.getElementById('goneCount').textContent = `${goneList.length} hồ sơ`;
+  document.getElementById('goneBody').innerHTML = goneList.map(c=>`
+    <tr class="is-gone">
+      <td>${c.agName||''}<div class="mono" style="color:#9a8f83">${c.unitCode||''} / ${c.agCode||''}</div></td>
+      <td class="mono">${c.proposalNum||''}</td>
+      <td class="mono">${c.policyNum||''}</td>
+      <td>${c.productName||''}</td>
+      <td class="mono">${c.ape!=null? Number(c.ape).toLocaleString('vi-VN',{maximumFractionDigits:1}):''}</td>
+      <td class="reason">${c.description||''}</td>
+      <td>${statusSelect(c.key)}</td>
+      <td><span class="tag gone">${fmtDateVN(c.resolvedDate)}</span></td>
+      <td><button class="dismiss-btn" onclick="dismissGone('${c.key}')">bỏ khỏi danh sách</button></td>
+    </tr>
+  `).join('');
+
+  // stats
+  const newCount = current.filter(c=> priorDate && !priorKeys.has(c.key)).length;
+  const totalApe = current.reduce((s,c)=> s + (parseFloat(c.ape)||0), 0);
+  const bigCount = current.filter(c=> c.classify==='Big Case').length;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="n">${current.length}</div><div class="l">Đang chờ</div></div>
+    <div class="stat new"><div class="n">${newCount}</div><div class="l">Mới xuất hiện</div></div>
+    <div class="stat gone"><div class="n">${goneList.length}</div><div class="l">Đã biến mất</div></div>
+    <div class="stat"><div class="n">${bigCount}</div><div class="l">Big Case</div></div>
+    <div class="stat"><div class="n">${totalApe.toLocaleString('vi-VN',{maximumFractionDigits:1})}</div><div class="l">Tổng APE (triệu)</div></div>
+  `;
+
+  // history line
+  const allDates = Object.keys(snapshots).sort();
+  document.getElementById('historyLine').innerHTML = allDates.length
+    ? `Lịch sử upload: ${allDates.map(d=> d===lastDate? `<b>${fmtDateVN(d)}</b>` : fmtDateVN(d)).join('  ·  ')}`
+    : '';
+}
+
+function exportCSV(){
+  const lastDate = loadJSON('pcd_lastDate', null);
+  if(!lastDate){ alert('Chưa có dữ liệu.'); return; }
+  const rows = snapshots[lastDate]||[];
+  const header = ['AGCode','AGName','ProposalNum','PolicyNum','ProposalDate','ProductName','APE','UnitCode','POName','Description','Classify','Status'];
+  const lines = [header.join(',')].concat(rows.map(c=> [
+    c.agCode,`"${(c.agName||'').replace(/"/g,'""')}"`,c.proposalNum,c.policyNum,fmtProposalDate(c.proposalDate),
+    `"${(c.productName||'').replace(/"/g,'""')}"`,c.ape,c.unitCode,`"${(c.poName||'').replace(/"/g,'""')}"`,
+    `"${(c.description||'').replace(/"/g,'""')}"`,c.classify, statuses[c.key]||''
+  ].join(',')));
+  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `pending-cases-${lastDate}.csv`;
+  a.click();
+}
+
+function resetAll(){
+  if(!confirm('Xóa toàn bộ dữ liệu đã lưu (tất cả lịch sử, trạng thái)? Không thể hoàn tác.')) return;
+  localStorage.removeItem(LS_SNAP);
+  localStorage.removeItem(LS_STATUS);
+  localStorage.removeItem(LS_GONE);
+  localStorage.removeItem('pcd_lastDate');
+  localStorage.removeItem('pcd_priorDate');
+  snapshots={}; statuses={}; goneMap={};
+  render();
+}
+
+render();
+</script>
+</body>
+</html>
