@@ -125,6 +125,12 @@
     <div class="sub" id="lastUpdated">Chưa có dữ liệu</div>
   </div>
   <div class="toolbar">
+    <span id="saveIndicator" style="font-size:11px;color:#ffe89a;min-width:70px"></span>
+    <div id="userBox" style="display:none;align-items:center;gap:8px">
+      <span id="userEmail" class="sub" style="color:#fff"></span>
+      <button class="btn ghost" onclick="logoutApp()">Logout</button>
+    </div>
+    <button id="loginBtn" class="btn ghost" onclick="openLoginModal()" style="display:none">🔒 Đăng nhập</button>
     <label class="sub" style="color:#fff;opacity:.85">Ngày dữ liệu:
       <input type="date" id="dataDate">
     </label>
@@ -134,6 +140,25 @@
     <button class="btn danger" onclick="resetAll()">Xóa dữ liệu</button>
   </div>
 </header>
+
+<!-- LOGIN MODAL -->
+<div id="loginModal" style="display:none;position:fixed;inset:0;background:rgba(20,10,10,.5);z-index:200;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:14px;padding:22px;width:320px;max-width:90vw;position:relative">
+    <button onclick="closeLoginModal()" style="position:absolute;top:12px;right:14px;border:none;background:none;font-size:18px;color:#8a7f74;cursor:pointer">✕</button>
+    <h3 style="margin:0 0 12px;font-size:15px;color:var(--maroon-dark)">🔐 Đăng nhập</h3>
+    <div style="margin-bottom:10px">
+      <label style="font-size:11px;font-weight:600;color:#6b6058;display:block;margin-bottom:3px">Email</label>
+      <input type="email" id="loginEmail" placeholder="admin@d07.com" style="width:100%;border:1.5px solid var(--line);border-radius:7px;padding:7px 10px;font-size:12px;box-sizing:border-box">
+    </div>
+    <div style="margin-bottom:6px">
+      <label style="font-size:11px;font-weight:600;color:#6b6058;display:block;margin-bottom:3px">Mật khẩu</label>
+      <input type="password" id="loginPassword" style="width:100%;border:1.5px solid var(--line);border-radius:7px;padding:7px 10px;font-size:12px;box-sizing:border-box">
+    </div>
+    <div id="loginError" style="display:none;color:#a83232;font-size:11px;margin-bottom:6px">Sai email hoặc mật khẩu</div>
+    <button class="btn" style="background:var(--maroon);color:#fff;width:100%" onclick="doLogin()">Đăng nhập</button>
+    <div style="font-size:10.5px;color:#8a7f74;margin-top:8px;line-height:1.5">Dùng chung tài khoản với Sales Report / ManMark (Firebase project d07-sales-dashboard).</div>
+  </div>
+</div>
 
 <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
   Kéo thả file Excel vào đây, hoặc bấm để chọn file — <strong>upload mỗi ngày</strong> để dashboard tự so sánh và đánh dấu hồ sơ mới / hồ sơ đã biến mất so với lần trước.
@@ -213,19 +238,100 @@
   <div class="history" id="historyLine"></div>
 </main>
 
-<script>
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getFirestore, doc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyASY63DlWIkvjybM1enPIpdZkxXJjrStQA",
+  authDomain: "d07-sales-dashboard.firebaseapp.com",
+  databaseURL: "https://d07-sales-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "d07-sales-dashboard",
+  storageBucket: "d07-sales-dashboard.firebasestorage.app",
+  messagingSenderId: "820808715064",
+  appId: "1:820808715064:web:62865b8b03b18b6a670fcd"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+let currentUser = null;
+let unsubPending = null;
+
+function openLoginModal(){ document.getElementById('loginModal').style.display='flex'; }
+function closeLoginModal(){ document.getElementById('loginModal').style.display='none'; }
+async function doLogin(){
+  const email=document.getElementById('loginEmail').value;
+  const pw=document.getElementById('loginPassword').value;
+  const errEl=document.getElementById('loginError');
+  try{ await signInWithEmailAndPassword(auth,email,pw); closeLoginModal(); errEl.style.display='none'; }
+  catch(e){ errEl.style.display='block'; }
+}
+async function logoutApp(){ await signOut(auth); }
+function requireLogin(){ if(!currentUser){ openLoginModal(); return false; } return true; }
+
 const LS_SNAP = 'pcd_snapshots';   // { 'YYYY-MM-DD': [case,...] }
 const LS_STATUS = 'pcd_statuses';  // { proposalNum: 'IF'|'PO'|... }
 const LS_GONE = 'pcd_gone';        // { proposalNum: {...caseData, resolvedDate} }
 
-function loadJSON(key, fallback){
-  try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }catch(e){ return fallback; }
-}
-function saveJSON(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+let snapshots = {};
+let statuses = {};
+let goneMap = {};
+let lastDateVal = '';
+let priorDateVal = '';
 
-let snapshots = loadJSON(LS_SNAP, {});
-let statuses = loadJSON(LS_STATUS, {});
-let goneMap = loadJSON(LS_GONE, {});
+function loadJSON(key, fallback){ return fallback; }
+function saveJSON(key, val){
+  if(key===LS_SNAP) snapshots = val;
+  else if(key===LS_STATUS) statuses = val;
+  else if(key===LS_GONE) goneMap = val;
+  else if(key==='pcd_lastDate') lastDateVal = val;
+  else if(key==='pcd_priorDate') priorDateVal = val;
+  scheduleSave();
+}
+
+let saveTimer = null;
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  const ind = document.getElementById('saveIndicator');
+  if(ind){ ind.textContent = '⏳ Đang lưu...'; }
+  saveTimer = setTimeout(async ()=>{
+    try{
+      await setDoc(doc(db,'pending_cases','main'), {
+        snapshots, statuses, goneMap, lastDate: lastDateVal, priorDate: priorDateVal,
+        updatedAt: new Date().toISOString(), updatedBy: currentUser?.email || 'unknown',
+      });
+      if(ind){ ind.textContent = '✓ Đã lưu'; setTimeout(()=>{ if(ind.textContent==='✓ Đã lưu') ind.textContent=''; }, 2000); }
+    }catch(e){ if(ind) ind.textContent = '⚠ Lỗi lưu'; console.error('Lỗi lưu pending_cases:', e); }
+  }, 500);
+}
+
+function loadFromFirestore(){
+  if(unsubPending) unsubPending();
+  unsubPending = onSnapshot(doc(db,'pending_cases','main'), snap=>{
+    const d = snap.exists() ? snap.data() : {};
+    snapshots = d.snapshots || {};
+    statuses = d.statuses || {};
+    goneMap = d.goneMap || {};
+    lastDateVal = d.lastDate || '';
+    priorDateVal = d.priorDate || '';
+    render();
+  }, err=>{ console.error('pending_cases read error (đã đăng nhập chưa?):', err); });
+}
+
+onAuthStateChanged(auth, user=>{
+  currentUser = user;
+  const userBox=document.getElementById('userBox'), loginBtn=document.getElementById('loginBtn');
+  if(user){
+    userBox.style.display='flex'; loginBtn.style.display='none';
+    document.getElementById('userEmail').textContent = user.email;
+    loadFromFirestore();
+  } else {
+    userBox.style.display='none'; loginBtn.style.display='block';
+    snapshots={}; statuses={}; goneMap={}; lastDateVal=''; priorDateVal='';
+    render();
+  }
+});
 
 const dateInput = document.getElementById('dataDate');
 dateInput.value = todayStr();
@@ -258,6 +364,7 @@ dropzone.addEventListener('drop', e=>{
 });
 
 function handleFile(file){
+  if(!requireLogin()) return;
   const reader = new FileReader();
   reader.onload = ev=>{
     try{
@@ -361,11 +468,13 @@ function statusSelect(key){
     `</select>`;
 }
 function setStatus(key, val){
+  if(!requireLogin()) return;
   if(val) statuses[key]=val; else delete statuses[key];
   saveJSON(LS_STATUS, statuses);
 }
 
 function dismissGone(key){
+  if(!requireLogin()) return;
   delete goneMap[key];
   saveJSON(LS_GONE, goneMap);
   render();
@@ -375,8 +484,8 @@ function toggleDetail(el){ el.classList.toggle('open'); }
 
 // ---------- Render ----------
 function render(){
-  const lastDate = loadJSON('pcd_lastDate', null) || Object.keys(snapshots).sort().pop() || null;
-  const priorDate = loadJSON('pcd_priorDate', '') || '';
+  const lastDate = lastDateVal || Object.keys(snapshots).sort().pop() || null;
+  const priorDate = priorDateVal || '';
   const current = lastDate ? (snapshots[lastDate]||[]) : [];
   const priorKeys = new Set((priorDate ? snapshots[priorDate] : [] || []).map(c=>c.key));
 
@@ -473,7 +582,7 @@ function render(){
 }
 
 function exportCSV(){
-  const lastDate = loadJSON('pcd_lastDate', null);
+  const lastDate = lastDateVal;
   if(!lastDate){ alert('Chưa có dữ liệu.'); return; }
   const rows = snapshots[lastDate]||[];
   const header = ['AGCode','AGName','ProposalNum','PolicyNum','ProposalDate','ProductName','APE','UnitCode','POName','Description','Classify','Status'];
@@ -490,16 +599,17 @@ function exportCSV(){
 }
 
 function resetAll(){
+  if(!requireLogin()) return;
   if(!confirm('Xóa toàn bộ dữ liệu đã lưu (tất cả lịch sử, trạng thái)? Không thể hoàn tác.')) return;
-  localStorage.removeItem(LS_SNAP);
-  localStorage.removeItem(LS_STATUS);
-  localStorage.removeItem(LS_GONE);
-  localStorage.removeItem('pcd_lastDate');
-  localStorage.removeItem('pcd_priorDate');
-  snapshots={}; statuses={}; goneMap={};
+  snapshots={}; statuses={}; goneMap={}; lastDateVal=''; priorDateVal='';
+  scheduleSave();
   render();
 }
 
+Object.assign(window, {
+  openLoginModal, closeLoginModal, doLogin, logoutApp,
+  exportCSV, resetAll, render, setStatus, toggleDetail, dismissGone,
+});
 render();
 </script>
 </body>

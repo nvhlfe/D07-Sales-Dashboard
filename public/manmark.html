@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ManMark — Theo Dõi Cam Kết Tuần</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box}
+  body{font-family:'Inter',Arial,sans-serif;background:#f0f4ff;font-size:12px;margin:0;color:#1a2138}
+  #toolbar{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px solid #e8ecf4;padding:8px 14px;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;box-shadow:0 2px 8px rgba(67,97,238,.07)}
+  .tool-group{display:flex;align-items:center;gap:6px}
+  .tool-sep{width:1px;height:24px;background:#e8ecf4;margin:0 2px}
+  .tool-label{font-size:10px;font-weight:600;color:#8896aa;white-space:nowrap}
+  select.compact,input.compact{border:1.5px solid #e8ecf4;border-radius:7px;padding:5px 9px;font-size:11.5px;
+    font-family:inherit;background:#fff;outline:none}
+  select.compact:focus,input.compact:focus{border-color:#4361ee}
+  .btn{padding:5px 12px;border-radius:7px;border:none;font-size:11.5px;font-weight:600;cursor:pointer;
+    display:flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap}
+  .btn:active{transform:scale(.97)}
+  .btn-blue{background:#eef2ff;color:#4361ee}.btn-blue:hover{background:#4361ee;color:#fff}
+  .btn-green{background:#e6faf2;color:#065f46}.btn-green:hover{background:#06d6a0;color:#fff}
+  .btn-purple{background:#f3e8ff;color:#6d28d9}.btn-purple:hover{background:#7c3aed;color:#fff}
+  .btn-amber{background:#fef3c7;color:#92400e}.btn-amber:hover{background:#f59e0b;color:#fff}
+  .btn-gray{background:#f1f3f9;color:#5b6478}.btn-gray:hover{background:#5b6478;color:#fff}
+  #statusBox{margin-left:auto;display:flex;align-items:center;gap:8px}
+  #saveIndicator{font-size:10.5px;font-weight:600}
+  .kpi-bar{display:flex;gap:8px;padding:8px 14px;overflow-x:auto}
+  .kpi-chip{background:#fff;border-radius:10px;padding:8px 14px;min-width:110px;flex-shrink:0;
+    border:1px solid #e8ecf4;box-shadow:0 1px 4px rgba(67,97,238,.06)}
+  .kpi-chip .lbl{font-size:9.5px;font-weight:600;color:#8896aa;text-transform:uppercase}
+  .kpi-chip .val{font-size:17px;font-weight:800;margin-top:2px}
+  #tableWrap{padding:0 14px 30px;overflow-x:auto}
+  table{border-collapse:collapse;width:100%;background:#fff;border-radius:10px;overflow:hidden;font-size:11.5px}
+  th,td{border:1px solid #edf0f9;padding:5px 7px;text-align:center;white-space:nowrap}
+  thead th{background:#eef2ff;color:#4361ee;font-weight:700;font-size:10.5px;position:sticky;top:0;z-index:5}
+  .col-sticky{position:sticky;left:0;background:#fff;z-index:3;text-align:left}
+  th.col-sticky{background:#eef2ff;z-index:6}
+  .col-name{min-width:140px;text-align:left;font-weight:600}
+  .week-head{background:#e0e7ff!important}
+  .new-badge{background:#fee2e2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:5px;margin-left:4px}
+  .cell-edit{width:56px;border:1px solid transparent;border-radius:5px;padding:2px 4px;font-size:11px;text-align:right;background:transparent}
+  .cell-edit:hover{border-color:#dde3f8}
+  .cell-edit:focus{border-color:#4361ee;background:#f8f9ff;outline:none}
+  .note-edit{width:110px;border:1px solid transparent;border-radius:5px;padding:2px 4px;font-size:10.5px;text-align:left;background:transparent}
+  .note-edit:hover{border-color:#dde3f8}
+  .note-edit:focus{border-color:#4361ee;background:#f8f9ff;outline:none}
+  .actual-cell{font-weight:700}
+  .status-green{color:#0f9d58}
+  .status-amber{color:#b45309}
+  .status-red{color:#c0243c}
+  .status-gray{color:#9aa4ba}
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(20,24,40,.5);z-index:100;align-items:center;justify-content:center}
+  .modal-box{background:#fff;border-radius:14px;padding:20px;width:520px;max-width:92vw;max-height:88vh;overflow:auto;
+    box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .modal-box.wide{width:720px}
+  .modal-box h3{margin:0 0 12px;font-size:15px;font-weight:800;color:#1a2138}
+  .modal-box .field{margin-bottom:10px}
+  .modal-box label{font-size:10.5px;font-weight:600;color:#6b7690;display:block;margin-bottom:3px}
+  .modal-box input[type=text],.modal-box input[type=number],.modal-box input[type=password],.modal-box input[type=email],
+  .modal-box select{width:100%;border:1.5px solid #e8ecf4;border-radius:7px;padding:7px 10px;font-size:12px;font-family:inherit;outline:none}
+  .modal-box input:focus,.modal-box select:focus{border-color:#4361ee}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+  .week-row{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+  .week-row input{flex:1}
+  .map-table{width:100%;font-size:11px;border-collapse:collapse}
+  .map-table td{padding:4px 6px;border-bottom:1px solid #f0f2f8;text-align:left}
+  .map-table select{width:100%;font-size:11px;padding:4px 6px}
+  .close-x{position:absolute;top:14px;right:16px;cursor:pointer;font-size:18px;color:#8896aa;background:none;border:none}
+  .hint{font-size:10.5px;color:#8896aa;margin-top:6px;line-height:1.5}
+  #loginModal .modal-box{width:340px}
+  .err-text{color:#c0243c;font-size:11px;margin-top:6px;display:none}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <div class="tool-group">
+    <span class="tool-label">Tháng</span>
+    <select id="monthSelect" class="compact"></select>
+    <select id="yearSelect" class="compact"></select>
+  </div>
+  <div class="tool-sep"></div>
+  <button class="btn btn-blue" onclick="openWeekConfig()">📅 Cấu hình tuần</button>
+  <button class="btn btn-purple" onclick="openUploadModal()">📥 Upload DATA tháng</button>
+  <button class="btn btn-amber" onclick="exportExcel()">⬇ Xuất Excel</button>
+  <div class="tool-sep"></div>
+  <div id="statusBox">
+    <span id="saveIndicator"></span>
+    <div id="userBox" style="display:none;align-items:center;gap:6px">
+      <span id="userEmail" style="font-size:10.5px;color:#4361ee;font-weight:600"></span>
+      <button class="btn btn-gray" onclick="logoutApp()">Logout</button>
+    </div>
+    <button id="loginBtn" class="btn btn-blue" onclick="openLoginModal()" style="display:none">🔒 Đăng nhập</button>
+  </div>
+</div>
+
+<div class="kpi-bar" id="kpiBar"></div>
+
+<div id="tableWrap">
+  <table id="mainTable"><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table>
+</div>
+
+<!-- LOGIN MODAL -->
+<div class="modal-bg" id="loginModal">
+  <div class="modal-box" style="position:relative">
+    <button class="close-x" onclick="closeLoginModal()">✕</button>
+    <h3>🔐 Đăng nhập</h3>
+    <div class="field"><label>Email</label><input type="email" id="loginEmail" placeholder="admin@d07.com"/></div>
+    <div class="field"><label>Mật khẩu</label><input type="password" id="loginPassword"/></div>
+    <div class="err-text" id="loginError">Sai email hoặc mật khẩu</div>
+    <div class="modal-actions"><button class="btn btn-blue" onclick="doLogin()">Đăng nhập</button></div>
+    <div class="hint">Dùng chung tài khoản với Sales Report / GA D07 Dashboard (Firebase project d07-sales-dashboard).</div>
+  </div>
+</div>
+
+<!-- WEEK CONFIG MODAL -->
+<div class="modal-bg" id="weekModal">
+  <div class="modal-box" style="position:relative">
+    <button class="close-x" onclick="closeWeekConfig()">✕</button>
+    <h3>📅 Cấu hình tuần trong tháng</h3>
+    <div class="hint" style="margin-top:-6px;margin-bottom:10px">Lịch tuần thay đổi theo từng tháng — nhập tay ngày bắt đầu/kết thúc (theo ngày trong tháng) cho từng tuần. "Ngày nộp" của hồ sơ trong Sales Report sẽ được cộng vào đúng tuần tương ứng.</div>
+    <div id="weekRows"></div>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-gray" onclick="addWeekRow()">＋ Thêm tuần</button>
+      <button class="btn btn-gray" onclick="resetWeekDefault()">↺ Mặc định 4 tuần (1-7/8-14/15-21/22-cuối tháng)</button>
+    </div>
+    <div class="modal-actions"><button class="btn btn-green" onclick="saveWeekConfig()">💾 Lưu cấu hình tuần</button></div>
+  </div>
+</div>
+
+<!-- UPLOAD MODAL (file picker) -->
+<div class="modal-bg" id="uploadModal">
+  <div class="modal-box" style="position:relative">
+    <button class="close-x" onclick="closeUploadModal()">✕</button>
+    <h3>📥 Upload DATA cam kết tháng</h3>
+    <div class="hint" style="margin-top:-6px">Chọn file Excel cam kết (giống DATA.xlsx) cho tháng đang xem. Bước tiếp theo bạn sẽ xác nhận cột dữ liệu tương ứng.</div>
+    <div class="field" style="margin-top:10px"><input type="file" id="uploadFileInput" accept=".xlsx,.xls"/></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#6b7690;margin-top:6px">
+      <input type="checkbox" id="replaceAllCheck" style="width:auto"/> Thay thế toàn bộ danh sách cam kết tháng này (xoá cam kết cũ không có trong file)
+    </label>
+    <div class="modal-actions"><button class="btn btn-purple" onclick="parseUploadedFile()">Tiếp tục →</button></div>
+  </div>
+</div>
+
+<!-- COLUMN MAPPING MODAL -->
+<div class="modal-bg" id="mapModal">
+  <div class="modal-box wide" style="position:relative">
+    <button class="close-x" onclick="closeMapModal()">✕</button>
+    <h3>🔗 Xác nhận cột dữ liệu</h3>
+    <div class="hint" style="margin-top:-6px" id="mapHint"></div>
+    <table class="map-table" id="mapTable"></table>
+    <div class="modal-actions"><button class="btn btn-green" onclick="confirmMapping()">✔ Xác nhận & Lưu</button></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyASY63DlWIkvjybM1enPIpdZkxXJjrStQA",
+  authDomain: "d07-sales-dashboard.firebaseapp.com",
+  databaseURL: "https://d07-sales-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "d07-sales-dashboard",
+  storageBucket: "d07-sales-dashboard.firebasestorage.app",
+  messagingSenderId: "820808715064",
+  appId: "1:820808715064:web:62865b8b03b18b6a670fcd"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+let currentUser = null;
+let reportData = [];          // from reports/{month}
+let manmark = defaultManmark(); // from manmark/{year-month}
+let unsubReports = null, unsubManmark = null;
+let uploadedRows = null, uploadedHeaders = null, uploadedHeaderColMap = null;
+let saveTimer = null;
+
+function defaultManmark(){
+  return { weeks: defaultWeeks(currentMonth()), commits: {}, notes: {}, updatedAt:null, updatedBy:null };
+}
+function currentMonth(){ return parseInt(document.getElementById('monthSelect').value||'1'); }
+function currentYear(){ return parseInt(document.getElementById('yearSelect').value||'2026'); }
+function mmKey(){ return `${currentYear()}-${currentMonth()}`; }
+function daysInMonth(y,m){ return new Date(y,m,0).getDate(); }
+function defaultWeeks(m){
+  const y = currentYear ? currentYear() : 2026;
+  const total = daysInMonth(y,m);
+  return [
+    {label:'Tuần 1', start:1, end:7},
+    {label:'Tuần 2', start:8, end:14},
+    {label:'Tuần 3', start:15, end:21},
+    {label:'Tuần 4', start:22, end:total},
+  ];
+}
+
+// ── Month/Year selectors ──
+const monthSelect = document.getElementById('monthSelect');
+const yearSelect = document.getElementById('yearSelect');
+function initSelectors(){
+  for(let i=1;i<=12;i++){
+    const o=document.createElement('option'); o.value=i; o.textContent=`Tháng ${i}`;
+    if(i===new Date().getMonth()+1) o.selected=true;
+    monthSelect.appendChild(o);
+  }
+  const curY = new Date().getFullYear();
+  for(let y=curY-1;y<=curY+1;y++){
+    const o=document.createElement('option'); o.value=y; o.textContent=`${y}`;
+    if(y===curY) o.selected=true;
+    yearSelect.appendChild(o);
+  }
+}
+monthSelect.addEventListener('change', loadAll);
+yearSelect.addEventListener('change', loadAll);
+
+// ── Auth ──
+function openLoginModal(){ document.getElementById('loginModal').style.display='flex'; }
+function closeLoginModal(){ document.getElementById('loginModal').style.display='none'; }
+async function doLogin(){
+  const email=document.getElementById('loginEmail').value;
+  const pw=document.getElementById('loginPassword').value;
+  const errEl=document.getElementById('loginError');
+  try{ await signInWithEmailAndPassword(auth,email,pw); closeLoginModal(); errEl.style.display='none'; }
+  catch(e){ errEl.style.display='block'; }
+}
+async function logoutApp(){ await signOut(auth); }
+onAuthStateChanged(auth, user=>{
+  currentUser=user;
+  const userBox=document.getElementById('userBox'), loginBtn=document.getElementById('loginBtn');
+  if(user){
+    userBox.style.display='flex'; loginBtn.style.display='none';
+    document.getElementById('userEmail').textContent=user.email;
+    loadAll();
+  } else {
+    userBox.style.display='none'; loginBtn.style.display='block';
+    reportData=[]; manmark=defaultManmark();
+    renderAll();
+  }
+});
+
+// ── Load data (real-time) ──
+function loadAll(){
+  if(!currentUser) return;
+  if(unsubReports) unsubReports();
+  if(unsubManmark) unsubManmark();
+  const m = currentMonth();
+  unsubReports = onSnapshot(doc(db,'reports',String(m)), snap=>{
+    reportData = snap.exists() ? (snap.data().data||[]) : [];
+    renderAll();
+  }, err=>{ console.error('reports read error (kiểm tra đã login đúng quyền chưa):', err); reportData=[]; renderAll(); });
+  unsubManmark = onSnapshot(doc(db,'manmark',mmKey()), snap=>{
+    manmark = snap.exists() ? Object.assign(defaultManmark(), snap.data()) : defaultManmark();
+    if(!manmark.weeks || !manmark.weeks.length) manmark.weeks = defaultWeeks(m);
+    renderAll();
+  }, err=>{ console.error('manmark read error (có thể chưa thêm rule cho collection manmark):', err); manmark=defaultManmark(); renderAll(); });
+}
+
+function saveManmark(){
+  clearTimeout(saveTimer);
+  const ind=document.getElementById('saveIndicator');
+  ind.textContent='⏳ Đang lưu...'; ind.style.color='#92400e';
+  saveTimer=setTimeout(async ()=>{
+    try{
+      await setDoc(doc(db,'manmark',mmKey()), Object.assign({}, manmark, {
+        updatedAt:new Date().toISOString(), updatedBy: currentUser?.email||'unknown'
+      }));
+      ind.textContent='✓ Đã lưu'; ind.style.color='#065f46';
+      setTimeout(()=>{ if(ind.textContent==='✓ Đã lưu') ind.textContent=''; },2000);
+    }catch(e){ ind.textContent='⚠ Lỗi lưu'; ind.style.color='#991b1b'; console.error(e); }
+  },500);
+}
+
+// ── Week config modal ──
+function openWeekConfig(){
+  const wrap=document.getElementById('weekRows'); wrap.innerHTML='';
+  (manmark.weeks||defaultWeeks(currentMonth())).forEach((w,i)=>addWeekRow(w));
+  document.getElementById('weekModal').style.display='flex';
+}
+function closeWeekConfig(){ document.getElementById('weekModal').style.display='none'; }
+function addWeekRow(w){
+  w = w || {label:`Tuần ${document.getElementById('weekRows').children.length+1}`, start:'', end:''};
+  const wrap=document.getElementById('weekRows');
+  const row=document.createElement('div'); row.className='week-row';
+  row.innerHTML = `
+    <input type="text" class="wk-label" value="${escAttr(w.label)}" placeholder="Nhãn (Tuần 1)"/>
+    <span style="font-size:10px;color:#8896aa">từ ngày</span>
+    <input type="number" class="wk-start" value="${w.start}" min="1" max="31" style="width:60px"/>
+    <span style="font-size:10px;color:#8896aa">đến</span>
+    <input type="number" class="wk-end" value="${w.end}" min="1" max="31" style="width:60px"/>
+    <button class="btn btn-gray" style="padding:4px 8px" onclick="this.parentElement.remove()">✕</button>`;
+  wrap.appendChild(row);
+}
+function resetWeekDefault(){
+  const wrap=document.getElementById('weekRows'); wrap.innerHTML='';
+  defaultWeeks(currentMonth()).forEach(w=>addWeekRow(w));
+}
+function saveWeekConfig(){
+  const rows=[...document.querySelectorAll('#weekRows .week-row')];
+  const weeks = rows.map(r=>({
+    label: r.querySelector('.wk-label').value.trim() || 'Tuần',
+    start: parseInt(r.querySelector('.wk-start').value)||1,
+    end: parseInt(r.querySelector('.wk-end').value)||1,
+  }));
+  manmark.weeks = weeks;
+  saveManmark();
+  closeWeekConfig();
+  renderAll();
+}
+
+// ── Upload & column mapping ──
+function openUploadModal(){ document.getElementById('uploadModal').style.display='flex'; }
+function closeUploadModal(){ document.getElementById('uploadModal').style.display='none'; document.getElementById('uploadFileInput').value=''; }
+
+function parseUploadedFile(){
+  const inp=document.getElementById('uploadFileInput');
+  if(!inp.files.length){ alert('Chọn file trước đã'); return; }
+  const file=inp.files[0];
+  const reader=new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:null});
+    // find header row: first row containing a cell matching agcode/msdl
+    let headerRowIdx=-1;
+    for(let i=0;i<Math.min(rows.length,15);i++){
+      const r=rows[i]||[];
+      if(r.some(c=>typeof c==='string' && /agcode|msdl/i.test(c))){ headerRowIdx=i; break; }
+    }
+    if(headerRowIdx===-1){ alert('Không tìm thấy dòng tiêu đề (cần có cột AGCode hoặc MSDL)'); return; }
+    const headers = (rows[headerRowIdx]||[]).map(h=>h==null?'':String(h).trim());
+    const dataRows = [];
+    for(let i=headerRowIdx+1;i<rows.length;i++){
+      const r=rows[i]||[];
+      if(r.every(c=>c===null||c==='')) continue;
+      const joined = r.map(c=>String(c||'')).join(' ');
+      if(/^TỔNG|TONG DỰ KIẾN|TONG DU KIEN/i.test(joined.trim())) continue;
+      dataRows.push(r);
+    }
+    uploadedHeaders = headers;
+    uploadedRows = dataRows;
+    closeUploadModal();
+    openMapModal();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function guessCol(headers, patterns){
+  for(const p of patterns){
+    const idx = headers.findIndex(h=>p.test(h));
+    if(idx!==-1) return idx;
+  }
+  return -1;
+}
+
+function openMapModal(){
+  const headers = uploadedHeaders;
+  const unitIdx = guessCol(headers,[/unit/i]);
+  const codeIdx = guessCol(headers,[/agcode/i, /^msdl$/i, /mã.*tvv/i]);
+  const nameIdx = guessCol(headers,[/agname/i, /tên.*tvv/i, /họ.*tên/i]);
+  const monthIdx = guessCol(headers,[/^dự kiến tháng \d+$/i, /dự kiến tháng/i, /cam kết tháng/i]);
+
+  // detect week columns by "Tuần N" pattern, also parse start-end from header text like (1–7)
+  const weekFyp = {}, weekHs = {};
+  headers.forEach((h,idx)=>{
+    let m = h.match(/FYP.*Tuần\s*(\d+)/i);
+    if(m) weekFyp[parseInt(m[1])] = idx;
+    m = h.match(/HS.*Tuần\s*(\d+)/i);
+    if(m) weekHs[parseInt(m[1])] = idx;
+  });
+  const weekNums = Array.from(new Set([...Object.keys(weekFyp),...Object.keys(weekHs)].map(Number))).sort((a,b)=>a-b);
+
+  // try auto-derive week day ranges from header text, e.g. "(1–7)"
+  const derivedWeeks = weekNums.map(n=>{
+    const hIdx = weekFyp[n] ?? weekHs[n];
+    const h = headers[hIdx]||'';
+    const rm = h.match(/\((\d+)\s*[–\-]\s*(\d+)\)/);
+    return rm ? {label:`Tuần ${n}`, start:parseInt(rm[1]), end:parseInt(rm[2])} : null;
+  });
+
+  uploadedHeaderColMap = { unitIdx, codeIdx, nameIdx, monthIdx, weekFyp, weekHs, weekNums, derivedWeeks };
+
+  const opts = (selectedIdx)=>headers.map((h,i)=>`<option value="${i}" ${i===selectedIdx?'selected':''}>${escAttr(h||'(cột '+(i+1)+')')}</option>`).join('')
+    + `<option value="-1" ${selectedIdx===-1?'selected':''}>— Không có —</option>`;
+
+  const t = document.getElementById('mapTable');
+  let html = '';
+  html += row('Unit / Nhóm', 'map-unit', opts(unitIdx));
+  html += row('Mã TVV (AGCode/MSDL)', 'map-code', opts(codeIdx));
+  html += row('Tên TVV', 'map-name', opts(nameIdx));
+  html += row('Cam kết tháng', 'map-month', opts(monthIdx));
+  weekNums.forEach(n=>{
+    html += row(`Cam kết FYP – Tuần ${n}`, `map-wfyp-${n}`, opts(weekFyp[n]??-1));
+    html += row(`Cam kết HS – Tuần ${n}`, `map-whs-${n}`, opts(weekHs[n]??-1));
+  });
+  t.innerHTML = html;
+  document.getElementById('mapHint').textContent = `Phát hiện ${uploadedRows.length} dòng dữ liệu, ${weekNums.length} tuần cam kết trong file. Kiểm tra lại các cột bên dưới trước khi lưu.`;
+  document.getElementById('mapModal').style.display='flex';
+
+  function row(label, id, optionsHtml){
+    return `<tr><td style="font-weight:600;color:#4a5568">${label}</td><td><select id="${id}">${optionsHtml}</select></td></tr>`;
+  }
+}
+function closeMapModal(){ document.getElementById('mapModal').style.display='none'; }
+
+function confirmMapping(){
+  const headers = uploadedHeaders, rows = uploadedRows;
+  const codeIdx = parseInt(document.getElementById('map-code').value);
+  const nameIdx = parseInt(document.getElementById('map-name').value);
+  const unitIdx = parseInt(document.getElementById('map-unit').value);
+  const monthIdx = parseInt(document.getElementById('map-month').value);
+  if(codeIdx===-1){ alert('Bắt buộc chọn cột Mã TVV'); return; }
+  const weekNums = uploadedHeaderColMap.weekNums;
+  const weekColMap = weekNums.map(n=>({
+    n, fypIdx: parseInt(document.getElementById(`map-wfyp-${n}`).value),
+    hsIdx: parseInt(document.getElementById(`map-whs-${n}`).value)
+  }));
+
+  const replaceAll = document.getElementById('replaceAllCheck').checked;
+  const newCommits = replaceAll ? {} : Object.assign({}, manmark.commits||{});
+
+  rows.forEach(r=>{
+    const rawCode = r[codeIdx];
+    if(rawCode===null || rawCode==='') return;
+    const code = String(rawCode).trim();
+    const weekly = weekColMap.map(w=>({
+      fyp: w.fypIdx>=0 ? num(r[w.fypIdx]) : 0,
+      hs: w.hsIdx>=0 ? num(r[w.hsIdx]) : 0,
+    }));
+    newCommits[code] = {
+      unit: unitIdx>=0 ? String(r[unitIdx]||'') : (newCommits[code]?.unit||''),
+      name: nameIdx>=0 ? String(r[nameIdx]||'') : (newCommits[code]?.name||''),
+      monthTarget: monthIdx>=0 ? num(r[monthIdx]) : 0,
+      weekly,
+    };
+  });
+  manmark.commits = newCommits;
+
+  // seed week boundaries from file if not already configured (or user hasn't customized this month yet)
+  const derived = uploadedHeaderColMap.derivedWeeks.filter(Boolean);
+  if(derived.length && (!manmark.weeks || !manmark.weeksSeeded)){
+    manmark.weeks = derived;
+    manmark.weeksSeeded = true;
+  }
+
+  saveManmark();
+  closeMapModal();
+  renderAll();
+}
+function num(v){ const n=Number(v); return isNaN(n)?0:n; }
+
+// ── Compute actuals from reportData ──
+function findPersonByCode(code){
+  return reportData.find(p=>String(p.msdl||'').trim()===String(code).trim());
+}
+function actualsForPerson(person, weeks){
+  const res = weeks.map(()=>({fyp:0, hs:0}));
+  if(!person || !person.daily) return res;
+  Object.keys(person.daily).forEach(dayKey=>{
+    const day = parseInt(dayKey);
+    const wIdx = weeks.findIndex(w=>day>=w.start && day<=w.end);
+    if(wIdx===-1) return;
+    const cases = person.daily[dayKey]?.cases||[];
+    cases.forEach(c=>{ res[wIdx].fyp += Number(c.fee||0); res[wIdx].hs += 1; });
+  });
+  return res;
+}
+
+// ── Render ──
+function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function escAttr(s){ return String(s||'').replace(/"/g,'&quot;'); }
+
+function renderAll(){
+  const weeks = manmark.weeks && manmark.weeks.length ? manmark.weeks : defaultWeeks(currentMonth());
+
+  // union of codes: commits + reportData msdl present
+  const codes = new Set(Object.keys(manmark.commits||{}));
+  reportData.forEach(p=>{ if(p.msdl) codes.add(String(p.msdl).trim()); });
+  const codeList = Array.from(codes).sort((a,b)=>{
+    const na = manmark.commits?.[a]?.name || findPersonByCode(a)?.name || '';
+    const nb = manmark.commits?.[b]?.name || findPersonByCode(b)?.name || '';
+    return na.localeCompare(nb,'vi');
+  });
+
+  // header
+  let thead = `<tr>
+    <th class="col-sticky" style="min-width:26px">STT</th>
+    <th class="col-sticky" style="min-width:70px">Unit</th>
+    <th class="col-sticky" style="min-width:76px">Mã TVV</th>
+    <th class="col-sticky col-name">Tên TVV</th>
+    <th style="min-width:90px">Cam kết tháng</th>
+    <th style="min-width:90px">Thực đạt tháng</th>`;
+  weeks.forEach(w=>{
+    thead += `<th class="week-head" colspan="5">${escAttr(w.label)} (${w.start}–${w.end})</th>`;
+  });
+  thead += `</tr><tr><th class="col-sticky"></th><th class="col-sticky"></th><th class="col-sticky"></th><th class="col-sticky"></th><th></th><th></th>`;
+  weeks.forEach(()=>{
+    thead += `<th class="week-head">CK FYP</th><th class="week-head">TĐ FYP</th><th class="week-head">CK HS</th><th class="week-head">TĐ HS</th><th class="week-head">Ghi chú</th>`;
+  });
+  thead += `</tr>`;
+  document.getElementById('tableHead').innerHTML = thead;
+
+  let tbody = '';
+  let totalMonthCommit=0, totalMonthActual=0;
+  const weekTotals = weeks.map(()=>({ckFyp:0, tdFyp:0, ckHs:0, tdHs:0}));
+
+  codeList.forEach((code,i)=>{
+    const commit = manmark.commits?.[code];
+    const person = findPersonByCode(code);
+    const isNew = !commit;
+    const unit = commit?.unit || person?.group || '';
+    const name = commit?.name || person?.name || '(chưa rõ tên)';
+    const monthTarget = commit?.monthTarget || 0;
+    const weekly = commit?.weekly || weeks.map(()=>({fyp:0,hs:0}));
+    const actuals = actualsForPerson(person, weeks);
+    const monthActual = actuals.reduce((s,a)=>s+a.fyp,0);
+    totalMonthCommit += monthTarget; totalMonthActual += monthActual;
+
+    tbody += `<tr>
+      <td class="col-sticky">${i+1}</td>
+      <td class="col-sticky">${escAttr(unit)}</td>
+      <td class="col-sticky">${escAttr(code)}</td>
+      <td class="col-sticky col-name">${escAttr(name)}${isNew?'<span class="new-badge">Mới</span>':''}</td>
+      <td><input class="cell-edit" type="number" value="${monthTarget||''}" onchange="updateCommitMonth('${code}',this.value)"/></td>
+      <td class="actual-cell ${statusClass(monthActual,monthTarget)}">${fmt(monthActual)}</td>`;
+
+    weeks.forEach((w,wi)=>{
+      const ck = weekly[wi]||{fyp:0,hs:0};
+      const td = actuals[wi]||{fyp:0,hs:0};
+      weekTotals[wi].ckFyp += ck.fyp||0; weekTotals[wi].tdFyp += td.fyp||0;
+      weekTotals[wi].ckHs += ck.hs||0; weekTotals[wi].tdHs += td.hs||0;
+      const note = manmark.notes?.[code]?.[wi] || '';
+      tbody += `
+        <td><input class="cell-edit" type="number" value="${ck.fyp||''}" onchange="updateCommitWeek('${code}',${wi},'fyp',this.value)"/></td>
+        <td class="actual-cell ${statusClass(td.fyp,ck.fyp)}">${fmt(td.fyp)}</td>
+        <td><input class="cell-edit" type="number" value="${ck.hs||''}" onchange="updateCommitWeek('${code}',${wi},'hs',this.value)"/></td>
+        <td class="actual-cell ${statusClass(td.hs,ck.hs)}">${fmt(td.hs)}</td>
+        <td><input class="note-edit" type="text" value="${escAttr(note)}" placeholder="Ghi chú..." onchange="updateNote('${code}',${wi},this.value)"/></td>`;
+    });
+    tbody += `</tr>`;
+  });
+
+  // totals row
+  tbody += `<tr style="background:#f8f9ff;font-weight:700">
+    <td class="col-sticky" colspan="4">TỔNG (${codeList.length} TVV)</td>
+    <td>${fmt(totalMonthCommit)}</td>
+    <td>${fmt(totalMonthActual)}</td>`;
+  weekTotals.forEach(wt=>{
+    tbody += `<td>${fmt(wt.ckFyp)}</td><td>${fmt(wt.tdFyp)}</td><td>${fmt(wt.ckHs)}</td><td>${fmt(wt.tdHs)}</td><td></td>`;
+  });
+  tbody += `</tr>`;
+
+  document.getElementById('tableBody').innerHTML = tbody || `<tr><td colspan="99" style="padding:20px;color:#8896aa">Chưa có dữ liệu — hãy đăng nhập, upload DATA tháng, hoặc kiểm tra reports/${currentMonth()} đã có dữ liệu sales report chưa.</td></tr>`;
+
+  renderKpi(codeList.length, totalMonthCommit, totalMonthActual);
+}
+
+function statusClass(actual, target){
+  target = Number(target||0); actual = Number(actual||0);
+  if(!target) return 'status-gray';
+  const pct = actual/target;
+  if(pct>=1) return 'status-green';
+  if(pct>=0.7) return 'status-amber';
+  return 'status-red';
+}
+
+function renderKpi(count, commit, actual){
+  const pct = commit ? Math.round(actual/commit*100) : 0;
+  document.getElementById('kpiBar').innerHTML = `
+    <div class="kpi-chip"><div class="lbl">Tổng TVV</div><div class="val">${count}</div></div>
+    <div class="kpi-chip"><div class="lbl">Cam kết tháng</div><div class="val">${fmt(commit)}</div></div>
+    <div class="kpi-chip"><div class="lbl">Thực đạt tháng</div><div class="val">${fmt(actual)}</div></div>
+    <div class="kpi-chip"><div class="lbl">% Đạt</div><div class="val" style="color:${pct>=100?'#0f9d58':pct>=70?'#b45309':'#c0243c'}">${pct}%</div></div>`;
+}
+
+// ── Inline edits ──
+function updateCommitMonth(code,val){
+  manmark.commits = manmark.commits||{};
+  if(!manmark.commits[code]) manmark.commits[code]={unit:'',name:findPersonByCode(code)?.name||'',monthTarget:0,weekly:(manmark.weeks||[]).map(()=>({fyp:0,hs:0}))};
+  manmark.commits[code].monthTarget = num(val);
+  saveManmark();
+}
+function updateCommitWeek(code,wi,field,val){
+  manmark.commits = manmark.commits||{};
+  if(!manmark.commits[code]) manmark.commits[code]={unit:'',name:findPersonByCode(code)?.name||'',monthTarget:0,weekly:(manmark.weeks||[]).map(()=>({fyp:0,hs:0}))};
+  if(!manmark.commits[code].weekly) manmark.commits[code].weekly=(manmark.weeks||[]).map(()=>({fyp:0,hs:0}));
+  while(manmark.commits[code].weekly.length<=wi) manmark.commits[code].weekly.push({fyp:0,hs:0});
+  manmark.commits[code].weekly[wi][field] = num(val);
+  saveManmark();
+}
+function updateNote(code,wi,val){
+  manmark.notes = manmark.notes||{};
+  if(!manmark.notes[code]) manmark.notes[code]={};
+  manmark.notes[code][wi] = val;
+  saveManmark();
+}
+
+// ── Export ──
+function exportExcel(){
+  const weeks = manmark.weeks||defaultWeeks(currentMonth());
+  const codes = new Set(Object.keys(manmark.commits||{}));
+  reportData.forEach(p=>{ if(p.msdl) codes.add(String(p.msdl).trim()); });
+  const codeList = Array.from(codes);
+  const header = ['STT','Unit','Mã TVV','Tên TVV','Cam kết tháng','Thực đạt tháng'];
+  weeks.forEach(w=>header.push(`${w.label} CK FYP`,`${w.label} TĐ FYP`,`${w.label} CK HS`,`${w.label} TĐ HS`,`${w.label} Ghi chú`));
+  const rows=[header];
+  codeList.forEach((code,i)=>{
+    const commit=manmark.commits?.[code]; const person=findPersonByCode(code);
+    const unit=commit?.unit||person?.group||''; const name=commit?.name||person?.name||'';
+    const weekly=commit?.weekly||weeks.map(()=>({fyp:0,hs:0}));
+    const actuals=actualsForPerson(person,weeks);
+    const monthActual=actuals.reduce((s,a)=>s+a.fyp,0);
+    const row=[i+1,unit,code,name,commit?.monthTarget||0,monthActual];
+    weeks.forEach((w,wi)=>{
+      const ck=weekly[wi]||{fyp:0,hs:0}, td=actuals[wi]||{fyp:0,hs:0};
+      row.push(ck.fyp||0, td.fyp||0, ck.hs||0, td.hs||0, manmark.notes?.[code]?.[wi]||'');
+    });
+    rows.push(row);
+  });
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'ManMark');
+  XLSX.writeFile(wb,`ManMark_T${currentMonth()}_${currentYear()}.xlsx`);
+}
+
+// ── Boot ──
+initSelectors();
+renderAll();
+
+Object.assign(window, {
+  openLoginModal, closeLoginModal, doLogin, logoutApp,
+  openWeekConfig, closeWeekConfig, addWeekRow, resetWeekDefault, saveWeekConfig,
+  openUploadModal, closeUploadModal, parseUploadedFile,
+  closeMapModal, confirmMapping,
+  updateCommitMonth, updateCommitWeek, updateNote,
+  exportExcel,
+});
+</script>
+</body>
+</html>

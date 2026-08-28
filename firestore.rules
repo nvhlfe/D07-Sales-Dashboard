@@ -29,6 +29,12 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
+    // Pending Cases — theo dõi hồ sơ đang chờ, 1 document duy nhất ("main"), realtime nhiều máy
+    match /pending_cases/{docId} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
     // Mặc định: từ chối tất cả những gì không khớp rule ở trên
     match /{document=**} {
       allow read, write: if false;
