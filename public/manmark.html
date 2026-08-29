@@ -275,8 +275,10 @@ function loadAll(){
   if(unsubManmark) unsubManmark();
   const m = currentMonth();
   unsubReports = onSnapshot(doc(db,'reports',String(m)), snap=>{
-    const d = snap.exists() ? snap.data().data : null;
-    reportData = Array.isArray(d) ? d : [];
+    const raw = snap.exists() ? snap.data().data : null;
+    if(Array.isArray(raw)) reportData = raw;                       // định dạng cũ (mảng)
+    else if(raw && typeof raw==='object') reportData = Object.values(raw); // định dạng hiện tại: map theo _id
+    else reportData = [];
     renderAll();
   }, err=>{ console.error('reports read error (kiểm tra đã login đúng quyền chưa):', err); reportData=[]; renderAll(); });
   unsubManmark = onSnapshot(doc(db,'manmark',mmKey()), snap=>{
