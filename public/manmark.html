@@ -52,6 +52,14 @@
   .status-amber{color:#b45309}
   .status-red{color:#c0243c}
   .status-gray{color:#9aa4ba}
+  .filter-input{width:100%;min-width:44px;border:1px solid #d7deef;border-radius:5px;padding:2px 4px;font-size:10px;
+    font-weight:400;text-align:center;background:#fff;color:#334}
+  .filter-input:focus{border-color:#4361ee;outline:none}
+  th.sortable{cursor:pointer;user-select:none}
+  th.sortable:hover{background:#dfe6ff!important}
+  .sort-arrow{color:#7c3aed;margin-left:2px}
+  .del-btn{border:none;background:#fee2e2;color:#b91c1c;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:11px}
+  .del-btn:hover{background:#f87171;color:#fff}
   .modal-bg{display:none;position:fixed;inset:0;background:rgba(20,24,40,.5);z-index:100;align-items:center;justify-content:center}
   .modal-box{background:#fff;border-radius:14px;padding:20px;width:520px;max-width:92vw;max-height:88vh;overflow:auto;
     box-shadow:0 20px 60px rgba(0,0,0,.25)}
@@ -85,6 +93,7 @@
   <div class="tool-sep"></div>
   <button class="btn btn-blue" onclick="openWeekConfig()">📅 Cấu hình tuần</button>
   <button class="btn btn-purple" onclick="openUploadModal()">📥 Upload DATA tháng</button>
+  <button class="btn btn-green" onclick="openAddTvvModal()">＋ Thêm TVV</button>
   <button class="btn btn-amber" onclick="exportExcel()">⬇ Xuất Excel</button>
   <div class="tool-sep"></div>
   <div id="statusBox">
@@ -156,6 +165,20 @@
   </div>
 </div>
 
+<!-- ADD TVV MODAL -->
+<div class="modal-bg" id="addTvvModal">
+  <div class="modal-box" style="position:relative">
+    <button class="close-x" onclick="closeAddTvvModal()">✕</button>
+    <h3>➕ Thêm TVV mới</h3>
+    <div class="field"><label>Unit</label><input type="text" id="atv-unit"/></div>
+    <div class="field"><label>Mã TVV (AGCode/MSDL)</label><input type="text" id="atv-code"/></div>
+    <div class="field"><label>Tên TVV</label><input type="text" id="atv-name"/></div>
+    <div class="field"><label>Cam kết tháng</label><input type="number" id="atv-month"/></div>
+    <div id="atv-weeks"></div>
+    <div class="modal-actions"><button class="btn btn-green" onclick="saveAddTvv()">💾 Lưu</button></div>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
@@ -182,8 +205,10 @@ let uploadedRows = null, uploadedHeaders = null, uploadedHeaderColMap = null;
 let saveTimer = null;
 
 function defaultManmark(){
-  return { weeks: defaultWeeks(currentMonth()), commits: {}, notes: {}, updatedAt:null, updatedBy:null };
+  return { weeks: defaultWeeks(currentMonth()), commits: {}, notes: {}, excluded: {}, updatedAt:null, updatedBy:null };
 }
+let sortState = { col: 'name', dir: 'asc' };
+let filterState = {};
 function currentMonth(){ return parseInt(document.getElementById('monthSelect').value||'1'); }
 function currentYear(){ return parseInt(document.getElementById('yearSelect').value||'2026'); }
 function mmKey(){ return `${currentYear()}-${currentMonth()}`; }
@@ -250,7 +275,8 @@ function loadAll(){
   if(unsubManmark) unsubManmark();
   const m = currentMonth();
   unsubReports = onSnapshot(doc(db,'reports',String(m)), snap=>{
-    reportData = snap.exists() ? (snap.data().data||[]) : [];
+    const d = snap.exists() ? snap.data().data : null;
+    reportData = Array.isArray(d) ? d : [];
     renderAll();
   }, err=>{ console.error('reports read error (kiểm tra đã login đúng quyền chưa):', err); reportData=[]; renderAll(); });
   unsubManmark = onSnapshot(doc(db,'manmark',mmKey()), snap=>{
@@ -453,9 +479,63 @@ function confirmMapping(){
 }
 function num(v){ const n=Number(v); return isNaN(n)?0:n; }
 
+// ── Render ──
+function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function escAttr(s){ return String(s||'').replace(/"/g,'&quot;'); }
+function currentWeeks(){ return manmark.weeks && manmark.weeks.length ? manmark.weeks : defaultWeeks(currentMonth()); }
+
+function renderAll(){ renderHeader(); renderBody(); }
+
+function arrow(colId){ return sortState.col===colId ? `<span class="sort-arrow">${sortState.dir==='asc'?'▲':'▼'}</span>` : ''; }
+function toggleSort(colId){
+  if(sortState.col===colId) sortState.dir = sortState.dir==='asc' ? 'desc' : 'asc';
+  else sortState = { col: colId, dir: 'asc' };
+  renderAll();
+}
+let filterDebounce=null;
+function onFilterInput(colId, val){
+  filterState[colId] = val;
+  clearTimeout(filterDebounce);
+  filterDebounce = setTimeout(renderBody, 150);
+}
+
+function renderHeader(){
+  const weeks = currentWeeks();
+  let thead = `<tr>
+    <th class="col-sticky" rowspan="3" style="min-width:26px">STT</th>
+    <th class="col-sticky sortable" rowspan="3" onclick="toggleSort('unit')">Unit${arrow('unit')}</th>
+    <th class="col-sticky sortable" rowspan="3" onclick="toggleSort('code')">Mã TVV${arrow('code')}</th>
+    <th class="col-sticky col-name sortable" rowspan="3" onclick="toggleSort('name')">Tên TVV${arrow('name')}</th>
+    <th class="sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('monthTarget')">Cam kết tháng${arrow('monthTarget')}</th>
+    <th class="sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('monthActual')">Thực đạt tháng${arrow('monthActual')}</th>`;
+  weeks.forEach(w=>{ thead += `<th class="week-head" colspan="5">${escAttr(w.label)} (${w.start}–${w.end})</th>`; });
+  thead += `<th rowspan="3" style="min-width:34px">Xoá</th></tr><tr>`;
+  weeks.forEach((w,wi)=>{
+    ['ckfyp','tdfyp','ckhs','tdhs','note'].forEach(f=>{
+      const id = `w${wi}_${f}`;
+      const lbl = {ckfyp:'CK FYP', tdfyp:'TĐ FYP', ckhs:'CK HS', tdhs:'TĐ HS', note:'Ghi chú'}[f];
+      thead += `<th class="week-head sortable" onclick="toggleSort('${id}')">${lbl}${arrow(id)}</th>`;
+    });
+  });
+  thead += `</tr><tr>
+    <th class="col-sticky"><input class="filter-input" oninput="onFilterInput('unit',this.value)" value="${escAttr(filterState.unit)}"/></th>
+    <th class="col-sticky"><input class="filter-input" oninput="onFilterInput('code',this.value)" value="${escAttr(filterState.code)}"/></th>
+    <th class="col-sticky"><input class="filter-input" oninput="onFilterInput('name',this.value)" value="${escAttr(filterState.name)}"/></th>
+    <th><input class="filter-input" oninput="onFilterInput('monthTarget',this.value)" value="${escAttr(filterState.monthTarget)}"/></th>
+    <th><input class="filter-input" oninput="onFilterInput('monthActual',this.value)" value="${escAttr(filterState.monthActual)}"/></th>`;
+  weeks.forEach((w,wi)=>{
+    ['ckfyp','tdfyp','ckhs','tdhs','note'].forEach(f=>{
+      const id = `w${wi}_${f}`;
+      thead += `<th class="week-head"><input class="filter-input" oninput="onFilterInput('${id}',this.value)" value="${escAttr(filterState[id])}"/></th>`;
+    });
+  });
+  thead += `</tr>`;
+  document.getElementById('tableHead').innerHTML = thead;
+}
+
 // ── Compute actuals from reportData ──
 function findPersonByCode(code){
-  return reportData.find(p=>String(p.msdl||'').trim()===String(code).trim());
+  return (Array.isArray(reportData)?reportData:[]).find(p=>String(p?.msdl||'').trim()===String(code).trim());
 }
 function actualsForPerson(person, weeks){
   const res = weeks.map(()=>({fyp:0, hs:0}));
@@ -470,45 +550,13 @@ function actualsForPerson(person, weeks){
   return res;
 }
 
-// ── Render ──
-function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
-function escAttr(s){ return String(s||'').replace(/"/g,'&quot;'); }
-
-function renderAll(){
-  const weeks = manmark.weeks && manmark.weeks.length ? manmark.weeks : defaultWeeks(currentMonth());
-
-  // union of codes: commits + reportData msdl present
+function buildRows(){
+  const weeks = currentWeeks();
   const codes = new Set(Object.keys(manmark.commits||{}));
-  reportData.forEach(p=>{ if(p.msdl) codes.add(String(p.msdl).trim()); });
-  const codeList = Array.from(codes).sort((a,b)=>{
-    const na = manmark.commits?.[a]?.name || findPersonByCode(a)?.name || '';
-    const nb = manmark.commits?.[b]?.name || findPersonByCode(b)?.name || '';
-    return na.localeCompare(nb,'vi');
-  });
-
-  // header
-  let thead = `<tr>
-    <th class="col-sticky" style="min-width:26px">STT</th>
-    <th class="col-sticky" style="min-width:70px">Unit</th>
-    <th class="col-sticky" style="min-width:76px">Mã TVV</th>
-    <th class="col-sticky col-name">Tên TVV</th>
-    <th style="min-width:90px">Cam kết tháng</th>
-    <th style="min-width:90px">Thực đạt tháng</th>`;
-  weeks.forEach(w=>{
-    thead += `<th class="week-head" colspan="5">${escAttr(w.label)} (${w.start}–${w.end})</th>`;
-  });
-  thead += `</tr><tr><th class="col-sticky"></th><th class="col-sticky"></th><th class="col-sticky"></th><th class="col-sticky"></th><th></th><th></th>`;
-  weeks.forEach(()=>{
-    thead += `<th class="week-head">CK FYP</th><th class="week-head">TĐ FYP</th><th class="week-head">CK HS</th><th class="week-head">TĐ HS</th><th class="week-head">Ghi chú</th>`;
-  });
-  thead += `</tr>`;
-  document.getElementById('tableHead').innerHTML = thead;
-
-  let tbody = '';
-  let totalMonthCommit=0, totalMonthActual=0;
-  const weekTotals = weeks.map(()=>({ckFyp:0, tdFyp:0, ckHs:0, tdHs:0}));
-
-  codeList.forEach((code,i)=>{
+  (Array.isArray(reportData)?reportData:[]).forEach(p=>{ if(p && p.msdl) codes.add(String(p.msdl).trim()); });
+  const excluded = manmark.excluded || {};
+  const list = Array.from(codes).filter(c=>!excluded[c]);
+  return list.map(code=>{
     const commit = manmark.commits?.[code];
     const person = findPersonByCode(code);
     const isNew = !commit;
@@ -518,45 +566,91 @@ function renderAll(){
     const weekly = commit?.weekly || weeks.map(()=>({fyp:0,hs:0}));
     const actuals = actualsForPerson(person, weeks);
     const monthActual = actuals.reduce((s,a)=>s+a.fyp,0);
-    totalMonthCommit += monthTarget; totalMonthActual += monthActual;
+    const weeksData = weeks.map((w,wi)=>({
+      ckfyp: (weekly[wi]||{}).fyp || 0,
+      tdfyp: (actuals[wi]||{}).fyp || 0,
+      ckhs: (weekly[wi]||{}).hs || 0,
+      tdhs: (actuals[wi]||{}).hs || 0,
+      note: manmark.notes?.[code]?.[wi] || '',
+    }));
+    return { code, unit, name, monthTarget, monthActual, isNew, weeks: weeksData };
+  });
+}
 
+function getColValue(row, colId){
+  if(colId==='unit') return row.unit;
+  if(colId==='code') return row.code;
+  if(colId==='name') return row.name;
+  if(colId==='monthTarget') return row.monthTarget;
+  if(colId==='monthActual') return row.monthActual;
+  const m = colId.match(/^w(\d+)_(ckfyp|tdfyp|ckhs|tdhs|note)$/);
+  if(m) return row.weeks[+m[1]]?.[m[2]];
+  return '';
+}
+function isNumericCol(colId){ return colId!=='unit' && colId!=='code' && colId!=='name' && !colId.endsWith('_note'); }
+
+function applyFiltersSort(rows){
+  let out = rows;
+  Object.keys(filterState).forEach(colId=>{
+    const f = (filterState[colId]||'').trim().toLowerCase();
+    if(!f) return;
+    out = out.filter(r=>String(getColValue(r,colId) ?? '').toLowerCase().includes(f));
+  });
+  const col = sortState.col;
+  if(col){
+    const dir = sortState.dir==='asc' ? 1 : -1;
+    const numeric = isNumericCol(col);
+    out = [...out].sort((a,b)=>{
+      const va=getColValue(a,col), vb=getColValue(b,col);
+      if(numeric) return ((Number(va)||0) - (Number(vb)||0)) * dir;
+      return String(va||'').localeCompare(String(vb||''),'vi') * dir;
+    });
+  }
+  return out;
+}
+
+function renderBody(){
+  const weeks = currentWeeks();
+  const rows = applyFiltersSort(buildRows());
+
+  let tbody = '';
+  let totalMonthCommit=0, totalMonthActual=0;
+  const weekTotals = weeks.map(()=>({ckFyp:0, tdFyp:0, ckHs:0, tdHs:0}));
+
+  rows.forEach((row,i)=>{
+    totalMonthCommit += row.monthTarget; totalMonthActual += row.monthActual;
     tbody += `<tr>
       <td class="col-sticky">${i+1}</td>
-      <td class="col-sticky">${escAttr(unit)}</td>
-      <td class="col-sticky">${escAttr(code)}</td>
-      <td class="col-sticky col-name">${escAttr(name)}${isNew?'<span class="new-badge">Mới</span>':''}</td>
-      <td><input class="cell-edit" type="number" value="${monthTarget||''}" onchange="updateCommitMonth('${code}',this.value)"/></td>
-      <td class="actual-cell ${statusClass(monthActual,monthTarget)}">${fmt(monthActual)}</td>`;
-
-    weeks.forEach((w,wi)=>{
-      const ck = weekly[wi]||{fyp:0,hs:0};
-      const td = actuals[wi]||{fyp:0,hs:0};
-      weekTotals[wi].ckFyp += ck.fyp||0; weekTotals[wi].tdFyp += td.fyp||0;
-      weekTotals[wi].ckHs += ck.hs||0; weekTotals[wi].tdHs += td.hs||0;
-      const note = manmark.notes?.[code]?.[wi] || '';
+      <td class="col-sticky">${escAttr(row.unit)}</td>
+      <td class="col-sticky">${escAttr(row.code)}</td>
+      <td class="col-sticky col-name">${escAttr(row.name)}${row.isNew?'<span class="new-badge">Mới</span>':''}</td>
+      <td><input class="cell-edit" type="number" value="${row.monthTarget||''}" onchange="updateCommitMonth('${row.code}',this.value)"/></td>
+      <td class="actual-cell ${statusClass(row.monthActual,row.monthTarget)}">${fmt(row.monthActual)}</td>`;
+    row.weeks.forEach((wd,wi)=>{
+      weekTotals[wi].ckFyp += wd.ckfyp; weekTotals[wi].tdFyp += wd.tdfyp;
+      weekTotals[wi].ckHs += wd.ckhs; weekTotals[wi].tdHs += wd.tdhs;
       tbody += `
-        <td><input class="cell-edit" type="number" value="${ck.fyp||''}" onchange="updateCommitWeek('${code}',${wi},'fyp',this.value)"/></td>
-        <td class="actual-cell ${statusClass(td.fyp,ck.fyp)}">${fmt(td.fyp)}</td>
-        <td><input class="cell-edit" type="number" value="${ck.hs||''}" onchange="updateCommitWeek('${code}',${wi},'hs',this.value)"/></td>
-        <td class="actual-cell ${statusClass(td.hs,ck.hs)}">${fmt(td.hs)}</td>
-        <td><input class="note-edit" type="text" value="${escAttr(note)}" placeholder="Ghi chú..." onchange="updateNote('${code}',${wi},this.value)"/></td>`;
+        <td><input class="cell-edit" type="number" value="${wd.ckfyp||''}" onchange="updateCommitWeek('${row.code}',${wi},'fyp',this.value)"/></td>
+        <td class="actual-cell ${statusClass(wd.tdfyp,wd.ckfyp)}">${fmt(wd.tdfyp)}</td>
+        <td><input class="cell-edit" type="number" value="${wd.ckhs||''}" onchange="updateCommitWeek('${row.code}',${wi},'hs',this.value)"/></td>
+        <td class="actual-cell ${statusClass(wd.tdhs,wd.ckhs)}">${fmt(wd.tdhs)}</td>
+        <td><input class="note-edit" type="text" value="${escAttr(wd.note)}" placeholder="Ghi chú..." onchange="updateNote('${row.code}',${wi},this.value)"/></td>`;
     });
-    tbody += `</tr>`;
+    tbody += `<td><button class="del-btn" title="Xoá TVV khỏi ManMark" onclick="deleteRow('${row.code}')">🗑</button></td></tr>`;
   });
 
-  // totals row
   tbody += `<tr style="background:#f8f9ff;font-weight:700">
-    <td class="col-sticky" colspan="4">TỔNG (${codeList.length} TVV)</td>
+    <td class="col-sticky" colspan="4">TỔNG (${rows.length} TVV)</td>
     <td>${fmt(totalMonthCommit)}</td>
     <td>${fmt(totalMonthActual)}</td>`;
   weekTotals.forEach(wt=>{
     tbody += `<td>${fmt(wt.ckFyp)}</td><td>${fmt(wt.tdFyp)}</td><td>${fmt(wt.ckHs)}</td><td>${fmt(wt.tdHs)}</td><td></td>`;
   });
-  tbody += `</tr>`;
+  tbody += `<td></td></tr>`;
 
   document.getElementById('tableBody').innerHTML = tbody || `<tr><td colspan="99" style="padding:20px;color:#8896aa">Chưa có dữ liệu — hãy đăng nhập, upload DATA tháng, hoặc kiểm tra reports/${currentMonth()} đã có dữ liệu sales report chưa.</td></tr>`;
 
-  renderKpi(codeList.length, totalMonthCommit, totalMonthActual);
+  renderKpi(rows.length, totalMonthCommit, totalMonthActual);
 }
 
 function statusClass(actual, target){
@@ -577,12 +671,64 @@ function renderKpi(count, commit, actual){
     <div class="kpi-chip"><div class="lbl">% Đạt</div><div class="val" style="color:${pct>=100?'#0f9d58':pct>=70?'#b45309':'#c0243c'}">${pct}%</div></div>`;
 }
 
+// ── Add / delete TVV ──
+function openAddTvvModal(){
+  if(!requireLogin()) return;
+  document.getElementById('atv-unit').value='';
+  document.getElementById('atv-code').value='';
+  document.getElementById('atv-name').value='';
+  document.getElementById('atv-month').value='';
+  const weeks = currentWeeks();
+  document.getElementById('atv-weeks').innerHTML = weeks.map((w,wi)=>`
+    <div class="week-row">
+      <span style="font-size:10.5px;color:#6b7690;min-width:70px">${escAttr(w.label)}</span>
+      <input type="number" id="atv-wfyp-${wi}" placeholder="CK FYP"/>
+      <input type="number" id="atv-whs-${wi}" placeholder="CK HS"/>
+    </div>`).join('');
+  document.getElementById('addTvvModal').style.display='flex';
+}
+function closeAddTvvModal(){ document.getElementById('addTvvModal').style.display='none'; }
+function saveAddTvv(){
+  const code = document.getElementById('atv-code').value.trim();
+  if(!code){ alert('Bắt buộc nhập Mã TVV'); return; }
+  if(manmark.commits?.[code] && !confirm(`Mã TVV ${code} đã tồn tại trong ManMark, bạn có muốn ghi đè không?`)) return;
+  const weeks = currentWeeks();
+  const weekly = weeks.map((w,wi)=>({
+    fyp: num(document.getElementById(`atv-wfyp-${wi}`).value),
+    hs: num(document.getElementById(`atv-whs-${wi}`).value),
+  }));
+  manmark.commits = manmark.commits||{};
+  manmark.commits[code] = {
+    unit: document.getElementById('atv-unit').value.trim(),
+    name: document.getElementById('atv-name').value.trim(),
+    monthTarget: num(document.getElementById('atv-month').value),
+    weekly,
+  };
+  manmark.excluded = manmark.excluded||{};
+  delete manmark.excluded[code];
+  saveManmark();
+  closeAddTvvModal();
+  renderAll();
+}
+function deleteRow(code){
+  if(!requireLogin()) return;
+  if(!confirm(`Xoá TVV ${code} khỏi ManMark?\n(Nếu TVV này vẫn có hồ sơ trong Sales Report, sẽ không tự hiện lại nữa cho tới khi bạn Thêm TVV lại thủ công.)`)) return;
+  if(manmark.commits) delete manmark.commits[code];
+  if(manmark.notes) delete manmark.notes[code];
+  manmark.excluded = manmark.excluded||{};
+  manmark.excluded[code] = true;
+  saveManmark();
+  renderAll();
+}
+function requireLogin(){ if(!currentUser){ openLoginModal(); return false; } return true; }
+
 // ── Inline edits ──
 function updateCommitMonth(code,val){
   manmark.commits = manmark.commits||{};
   if(!manmark.commits[code]) manmark.commits[code]={unit:'',name:findPersonByCode(code)?.name||'',monthTarget:0,weekly:(manmark.weeks||[]).map(()=>({fyp:0,hs:0}))};
   manmark.commits[code].monthTarget = num(val);
   saveManmark();
+  renderBody();
 }
 function updateCommitWeek(code,wi,field,val){
   manmark.commits = manmark.commits||{};
@@ -591,6 +737,7 @@ function updateCommitWeek(code,wi,field,val){
   while(manmark.commits[code].weekly.length<=wi) manmark.commits[code].weekly.push({fyp:0,hs:0});
   manmark.commits[code].weekly[wi][field] = num(val);
   saveManmark();
+  renderBody();
 }
 function updateNote(code,wi,val){
   manmark.notes = manmark.notes||{};
@@ -601,27 +748,17 @@ function updateNote(code,wi,val){
 
 // ── Export ──
 function exportExcel(){
-  const weeks = manmark.weeks||defaultWeeks(currentMonth());
-  const codes = new Set(Object.keys(manmark.commits||{}));
-  reportData.forEach(p=>{ if(p.msdl) codes.add(String(p.msdl).trim()); });
-  const codeList = Array.from(codes);
+  const weeks = currentWeeks();
+  const rows = applyFiltersSort(buildRows());
   const header = ['STT','Unit','Mã TVV','Tên TVV','Cam kết tháng','Thực đạt tháng'];
   weeks.forEach(w=>header.push(`${w.label} CK FYP`,`${w.label} TĐ FYP`,`${w.label} CK HS`,`${w.label} TĐ HS`,`${w.label} Ghi chú`));
-  const rows=[header];
-  codeList.forEach((code,i)=>{
-    const commit=manmark.commits?.[code]; const person=findPersonByCode(code);
-    const unit=commit?.unit||person?.group||''; const name=commit?.name||person?.name||'';
-    const weekly=commit?.weekly||weeks.map(()=>({fyp:0,hs:0}));
-    const actuals=actualsForPerson(person,weeks);
-    const monthActual=actuals.reduce((s,a)=>s+a.fyp,0);
-    const row=[i+1,unit,code,name,commit?.monthTarget||0,monthActual];
-    weeks.forEach((w,wi)=>{
-      const ck=weekly[wi]||{fyp:0,hs:0}, td=actuals[wi]||{fyp:0,hs:0};
-      row.push(ck.fyp||0, td.fyp||0, ck.hs||0, td.hs||0, manmark.notes?.[code]?.[wi]||'');
-    });
-    rows.push(row);
+  const aoa=[header];
+  rows.forEach((row,i)=>{
+    const r=[i+1,row.unit,row.code,row.name,row.monthTarget,row.monthActual];
+    row.weeks.forEach(wd=>r.push(wd.ckfyp,wd.tdfyp,wd.ckhs,wd.tdhs,wd.note));
+    aoa.push(r);
   });
-  const ws=XLSX.utils.aoa_to_sheet(rows);
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws,'ManMark');
   XLSX.writeFile(wb,`ManMark_T${currentMonth()}_${currentYear()}.xlsx`);
@@ -637,7 +774,8 @@ Object.assign(window, {
   openUploadModal, closeUploadModal, parseUploadedFile,
   closeMapModal, confirmMapping,
   updateCommitMonth, updateCommitWeek, updateNote,
-  exportExcel,
+  exportExcel, toggleSort, onFilterInput,
+  openAddTvvModal, closeAddTvvModal, saveAddTvv, deleteRow,
 });
 </script>
 </body>
