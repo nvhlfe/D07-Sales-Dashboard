@@ -118,6 +118,7 @@
   <button class="btn btn-purple" onclick="openUploadModal()">📥 Upload DATA tháng</button>
   <button class="btn btn-green" onclick="openAddTvvModal()">＋ Thêm TVV</button>
   <button class="btn btn-amber" onclick="exportExcel()">⬇ Xuất Excel</button>
+  <button class="btn btn-gray" onclick="openLegacyCheckModal()">🗄️ Kiểm tra dữ liệu năm cũ</button>
   <div class="tool-sep"></div>
   <div id="statusBox">
     <span id="saveIndicator"></span>
@@ -133,6 +134,20 @@
 
 <div id="tableWrap">
   <table id="mainTable"><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table>
+</div>
+
+<!-- LEGACY YEAR-DATA CHECK MODAL -->
+<div class="modal-bg" id="legacyModal">
+  <div class="modal-box wide" style="position:relative">
+    <button class="close-x" onclick="closeLegacyCheckModal()">✕</button>
+    <h3>🗄️ Kiểm tra dữ liệu reports/{tháng} không có năm</h3>
+    <div class="hint" style="margin-top:-6px">
+      Sales Report giờ lưu theo <code>reports/{năm}-{tháng}</code> (vd: reports/2026-8). Nếu trước đây từng lưu theo
+      <code>reports/{tháng}</code> (không có năm, vd: reports/8), dữ liệu đó có thể chưa được chuyển sang. Công cụ này rà cả 12 tháng
+      của năm <b id="legacyYearLabel"></b>, so sánh bản cũ vs bản mới, và cho phép gộp (chỉ thêm người còn thiếu, KHÔNG ghi đè người đã có ở bản mới).
+    </div>
+    <div id="legacyResults" style="margin-top:12px;font-size:11.5px">Đang quét...</div>
+  </div>
 </div>
 
 <!-- TVV DETAIL MODAL -->
@@ -329,7 +344,8 @@ function loadAll(){
   if(unsubManmark) unsubManmark();
   if(unsubPending) unsubPending();
   const m = currentMonth();
-  unsubReports = onSnapshot(doc(db,'reports',String(m)), snap=>{
+  const y = currentYear();
+  unsubReports = onSnapshot(doc(db,'reports',`${y}-${m}`), snap=>{
     const raw = snap.exists() ? snap.data().data : null;
     if(Array.isArray(raw)) reportData = raw;                       // định dạng cũ (mảng)
     else if(raw && typeof raw==='object') reportData = Object.values(raw); // định dạng hiện tại: map theo _id
@@ -357,7 +373,7 @@ async function loadYearlyHistory(){
   const results = await Promise.all(months.map(async m=>{
     try{
       const [repSnap, mmSnap] = await Promise.all([
-        getDoc(doc(db,'reports',String(m))),
+        getDoc(doc(db,'reports',`${y}-${m}`)),
         getDoc(doc(db,'manmark',`${y}-${m}`)),
       ]);
       const raw = repSnap.exists() ? repSnap.data().data : null;
@@ -910,7 +926,89 @@ function openTvvDetail(code){
 }
 function closeDetailModal(){ document.getElementById('detailModal').style.display='none'; }
 
+// ── Kiểm tra & di chuyển dữ liệu reports/{tháng} (cũ, không năm) → reports/{năm}-{tháng} (mới) ──
+function toPersonArray(raw){
+  if(Array.isArray(raw)) return raw;
+  if(raw && typeof raw==='object') return Object.values(raw);
+  return [];
+}
+async function openLegacyCheckModal(){
+  if(!requireLogin()) return;
+  document.getElementById('legacyModal').style.display='flex';
+  document.getElementById('legacyYearLabel').textContent = currentYear();
+  await runLegacyCheck();
+}
+function closeLegacyCheckModal(){ document.getElementById('legacyModal').style.display='none'; }
 
+async function runLegacyCheck(){
+  const year = currentYear();
+  const resEl = document.getElementById('legacyResults');
+  resEl.textContent = 'Đang quét 12 tháng, vui lòng chờ...';
+  const rows = [];
+  for(let m=1;m<=12;m++){
+    try{
+      const [legacySnap, newSnap] = await Promise.all([
+        getDoc(doc(db,'reports',String(m))),
+        getDoc(doc(db,'reports',`${year}-${m}`)),
+      ]);
+      const legacyArr = legacySnap.exists() ? toPersonArray(legacySnap.data().data) : [];
+      const newArr = newSnap.exists() ? toPersonArray(newSnap.data().data) : [];
+      const newMsdls = new Set(newArr.map(p=>String(p?.msdl||'').trim()).filter(Boolean));
+      const missing = legacyArr.filter(p=>String(p?.msdl||'').trim() && !newMsdls.has(String(p.msdl).trim()));
+      if(legacyArr.length){
+        rows.push({ m, legacyCount:legacyArr.length, newCount:newArr.length, missingCount:missing.length });
+      }
+    }catch(e){ console.error(`Lỗi quét tháng ${m}:`, e); }
+  }
+  if(!rows.length){
+    resEl.innerHTML = `<div style="color:#065f46;padding:10px;background:#e6faf2;border-radius:8px">✓ Không tìm thấy dữ liệu nào ở định dạng cũ (reports/{tháng} không năm) cho năm ${year}. Không cần di chuyển gì.</div>`;
+    return;
+  }
+  resEl.innerHTML = `<table class="map-table" style="width:100%">
+    <tr style="font-weight:700;color:#4a5568"><td>Tháng</td><td>Bản cũ (reports/{tháng})</td><td>Bản mới (reports/${year}-{tháng})</td><td>Người thiếu ở bản mới</td><td></td></tr>
+    ${rows.map(r=>`<tr>
+      <td>Tháng ${r.m}</td>
+      <td>${r.legacyCount} người</td>
+      <td>${r.newCount} người</td>
+      <td style="color:${r.missingCount?'#c0243c':'#065f46'};font-weight:700">${r.missingCount}</td>
+      <td>${r.missingCount ? `<button class="btn btn-green" style="padding:3px 8px" onclick="migrateLegacyMonth(${r.m})">Gộp vào bản mới</button>` : '<span style="color:#8896aa">Đã đủ</span>'}</td>
+    </tr>`).join('')}
+  </table>
+  <div class="hint" style="margin-top:10px">Gộp chỉ THÊM những người có MSDL chưa tồn tại ở bản mới — không ghi đè/xoá bất kỳ ai đã có sẵn ở bản mới.</div>`;
+}
+
+async function migrateLegacyMonth(m){
+  const year = currentYear();
+  if(!confirm(`Gộp dữ liệu tháng ${m} từ reports/${m} (cũ) vào reports/${year}-${m} (mới)? Chỉ thêm người còn thiếu, không ghi đè.`)) return;
+  try{
+    const [legacySnap, newSnap] = await Promise.all([
+      getDoc(doc(db,'reports',String(m))),
+      getDoc(doc(db,'reports',`${year}-${m}`)),
+    ]);
+    const legacyArr = legacySnap.exists() ? toPersonArray(legacySnap.data().data) : [];
+    const newRaw = newSnap.exists() ? newSnap.data().data : null;
+    const newMap = (newRaw && typeof newRaw==='object' && !Array.isArray(newRaw)) ? Object.assign({},newRaw) : {};
+    const existingMsdls = new Set(Object.values(newMap).map(p=>String(p?.msdl||'').trim()).filter(Boolean));
+    let added = 0;
+    legacyArr.forEach(p=>{
+      const msdl = String(p?.msdl||'').trim();
+      if(!msdl || existingMsdls.has(msdl)) return;
+      const id = p._id || ('legacy_'+msdl+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,6));
+      newMap[id] = Object.assign({}, p, { _id:id });
+      added++;
+    });
+    await setDoc(doc(db,'reports',`${year}-${m}`), {
+      data: newMap, updatedAt: new Date().toISOString(), updatedBy: currentUser?.email||'unknown',
+    }, { merge:true });
+    alert(`Đã thêm ${added} người từ bản cũ vào reports/${year}-${m}.`);
+    await runLegacyCheck();
+  }catch(e){
+    console.error('Lỗi gộp dữ liệu:', e);
+    alert('⚠ Gộp không thành công: ' + e.message);
+  }
+}
+
+// ── Add / delete TVV ──
 function openAddTvvModal(){
   if(!requireLogin()) return;
   document.getElementById('atv-unit').value='';
@@ -1016,6 +1114,7 @@ Object.assign(window, {
   exportExcel, toggleSort, onFilterInput,
   openAddTvvModal, closeAddTvvModal, saveAddTvv, deleteRow,
   openTvvDetail, closeDetailModal,
+  openLegacyCheckModal, closeLegacyCheckModal, migrateLegacyMonth,
 });
 </script>
 </body>
