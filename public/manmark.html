@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>ManMark — Theo Dõi Cam Kết Tuần</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   *,*::before,*::after{box-sizing:border-box}
@@ -848,7 +848,7 @@ function renderKpi(count, commit, actual, forecast){
 function openTvvDetail(code){
   const weeks = currentWeeks();
   const row = buildRows().find(r=>r.code===code);
-  if(!row){ return; }
+  if(!row){ alert('Không tìm thấy dữ liệu cho TVV này.'); return; }
   document.getElementById('detailTitle').textContent = `${row.name} ${row.isNew?'(chưa có cam kết)':''}`;
   document.getElementById('detailSub').textContent = `Unit ${row.unit||'—'} · Mã TVV ${row.code}`;
 
@@ -858,32 +858,43 @@ function openTvvDetail(code){
   document.getElementById('detailTrendChip').innerHTML = `<span class="trend-chip ${dirClass}">${dirLabel}</span>
     ${row.maxConsecutiveMiss>=2?`<span class="warn-badge miss" style="margin-left:6px">⚠️ Chưa đạt cam kết ${row.maxConsecutiveMiss} tuần liên tiếp</span>`:''}`;
 
-  // Chart 1: tuần trong tháng
-  const wLabels = weeks.map(w=>w.label);
-  const wCommit = row.weeks.map(w=>w.ckfyp);
-  const wActual = row.weeks.map(w=>w.tdfyp);
-  if(detailChartWeekly) detailChartWeekly.destroy();
-  detailChartWeekly = new Chart(document.getElementById('chartWeekly'), {
-    type:'bar',
-    data:{ labels:wLabels, datasets:[
-      { label:'Cam kết', data:wCommit, backgroundColor:'#c7d2fe' },
-      { label:'Thực đạt', data:wActual, backgroundColor:'#4361ee' },
-    ]},
-    options:{ responsive:true, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}}, scales:{y:{beginAtZero:true}} }
-  });
+  // Mở modal NGAY — không để lỗi vẽ chart (vd CDN Chart.js chưa tải kịp/bị chặn) làm modal không hiện ra
+  document.getElementById('detailModal').style.display='flex';
 
-  // Chart 2: xu hướng cả năm
-  const mLabels = trend.months.map(m=>`T${m.m}`);
-  if(detailChartMonthly) detailChartMonthly.destroy();
-  detailChartMonthly = new Chart(document.getElementById('chartMonthly'), {
-    type:'line',
-    data:{ labels:mLabels, datasets:[
-      { label:'Cam kết', data:trend.months.map(m=>m.commit), borderColor:'#c7d2fe', backgroundColor:'transparent', tension:.2 },
-      { label:'Thực đạt', data:trend.months.map(m=>m.actual), borderColor:'#4361ee', backgroundColor:'transparent', tension:.2 },
-      { label:'TB trượt 3 tháng', data:trend.ma3, borderColor:'#f59e0b', borderDash:[5,3], backgroundColor:'transparent', tension:.2 },
-    ]},
-    options:{ responsive:true, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}}, scales:{y:{beginAtZero:true}} }
-  });
+  try{
+    if(typeof Chart === 'undefined'){ throw new Error('Chart.js chưa tải được (kiểm tra mạng / CDN có bị chặn không)'); }
+
+    // Chart 1: tuần trong tháng
+    const wLabels = weeks.map(w=>w.label);
+    const wCommit = row.weeks.map(w=>w.ckfyp);
+    const wActual = row.weeks.map(w=>w.tdfyp);
+    if(detailChartWeekly) detailChartWeekly.destroy();
+    detailChartWeekly = new Chart(document.getElementById('chartWeekly'), {
+      type:'bar',
+      data:{ labels:wLabels, datasets:[
+        { label:'Cam kết', data:wCommit, backgroundColor:'#c7d2fe' },
+        { label:'Thực đạt', data:wActual, backgroundColor:'#4361ee' },
+      ]},
+      options:{ responsive:true, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}}, scales:{y:{beginAtZero:true}} }
+    });
+
+    // Chart 2: xu hướng cả năm
+    const mLabels = trend.months.map(m=>`T${m.m}`);
+    if(detailChartMonthly) detailChartMonthly.destroy();
+    detailChartMonthly = new Chart(document.getElementById('chartMonthly'), {
+      type:'line',
+      data:{ labels:mLabels, datasets:[
+        { label:'Cam kết', data:trend.months.map(m=>m.commit), borderColor:'#c7d2fe', backgroundColor:'transparent', tension:.2 },
+        { label:'Thực đạt', data:trend.months.map(m=>m.actual), borderColor:'#4361ee', backgroundColor:'transparent', tension:.2 },
+        { label:'TB trượt 3 tháng', data:trend.ma3, borderColor:'#f59e0b', borderDash:[5,3], backgroundColor:'transparent', tension:.2 },
+      ]},
+      options:{ responsive:true, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}}, scales:{y:{beginAtZero:true}} }
+    });
+  }catch(e){
+    console.error('Lỗi vẽ biểu đồ chi tiết TVV:', e);
+    document.querySelector('#detailModal .detail-grid').innerHTML =
+      `<div style="grid-column:1/-1;color:#c0243c;font-size:11px;padding:10px">⚠ Không vẽ được biểu đồ (${escAttr(e.message)}). Dữ liệu khác trong panel vẫn xem được bình thường.</div>`;
+  }
 
   // Danh sách pending
   const pend = row.pending;
@@ -896,8 +907,6 @@ function openTvvDetail(code){
       ${pend.cases.map(c=>`<tr><td>${escAttr(c.proposalNum)}</td><td>${escAttr(c.productName||'')}</td><td style="text-align:right">${fmt(c.ape)}</td><td>${escAttr(c.proposalDate||'')}</td></tr>`).join('')}
     </table>`;
   }
-
-  document.getElementById('detailModal').style.display='flex';
 }
 function closeDetailModal(){ document.getElementById('detailModal').style.display='none'; }
 
