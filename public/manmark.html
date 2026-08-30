@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>ManMark — Theo Dõi Cam Kết Tuần</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   *,*::before,*::after{box-sizing:border-box}
@@ -60,6 +61,28 @@
   .sort-arrow{color:#7c3aed;margin-left:2px}
   .del-btn{border:none;background:#fee2e2;color:#b91c1c;border-radius:6px;padding:3px 7px;cursor:pointer;font-size:11px}
   .del-btn:hover{background:#f87171;color:#fff}
+  .breakdown{font-size:9px;font-weight:500;color:#8896aa;margin-top:1px;line-height:1.3}
+  .breakdown .confirmed{color:#0f9d58}
+  .breakdown .potential{color:#b45309}
+  .pending-cell{font-weight:700;color:#7c3aed}
+  .forecast-cell{font-weight:800}
+  .warn-badge{display:inline-block;font-size:9px;font-weight:700;padding:1px 5px;border-radius:5px;margin-left:3px;cursor:default}
+  .warn-badge.miss{background:#fee2e2;color:#b91c1c}
+  .warn-badge.trend{background:#fef3c7;color:#92400e}
+  .name-link{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}
+  .name-link:hover{color:#4361ee}
+  .detail-box{background:#fff;border-radius:14px;padding:20px;width:880px;max-width:95vw;max-height:92vh;overflow:auto;
+    box-shadow:0 20px 60px rgba(0,0,0,.25);position:relative}
+  .detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+  .detail-chart-box{background:#f8f9ff;border-radius:10px;padding:10px;border:1px solid #e8ecf4}
+  .detail-chart-box h4{margin:0 0 8px;font-size:11.5px;color:#4a5568;font-weight:700}
+  .trend-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px}
+  .trend-up{background:#e6faf2;color:#065f46}
+  .trend-down{background:#fee2e2;color:#991b1b}
+  .trend-flat{background:#f1f3f9;color:#5b6478}
+  .pending-list{max-height:180px;overflow:auto;font-size:10.5px}
+  .pending-list table{font-size:10px}
+  .legend-box{font-size:10px;color:#8896aa;background:#f8f9ff;border-radius:8px;padding:8px 10px;margin-top:10px;line-height:1.6}
   .modal-bg{display:none;position:fixed;inset:0;background:rgba(20,24,40,.5);z-index:100;align-items:center;justify-content:center}
   .modal-box{background:#fff;border-radius:14px;padding:20px;width:520px;max-width:92vw;max-height:88vh;overflow:auto;
     box-shadow:0 20px 60px rgba(0,0,0,.25)}
@@ -110,6 +133,33 @@
 
 <div id="tableWrap">
   <table id="mainTable"><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table>
+</div>
+
+<!-- TVV DETAIL MODAL -->
+<div class="modal-bg" id="detailModal">
+  <div class="detail-box">
+    <button class="close-x" onclick="closeDetailModal()">✕</button>
+    <h3 id="detailTitle" style="margin:0 0 4px;font-size:15px;font-weight:800"></h3>
+    <div id="detailSub" style="font-size:11px;color:#8896aa"></div>
+    <div id="detailTrendChip" style="margin-top:8px"></div>
+    <div class="detail-grid">
+      <div class="detail-chart-box">
+        <h4>Cam kết vs Thực đạt theo tuần (tháng đang xem)</h4>
+        <canvas id="chartWeekly" height="180"></canvas>
+      </div>
+      <div class="detail-chart-box">
+        <h4>Xu hướng theo tháng (cả năm) + trung bình trượt 3 tháng</h4>
+        <canvas id="chartMonthly" height="180"></canvas>
+      </div>
+    </div>
+    <div class="detail-chart-box" style="margin-top:14px">
+      <h4>Hồ sơ đang chờ xử lý (Pending)</h4>
+      <div class="pending-list" id="detailPendingList"></div>
+    </div>
+    <div class="legend-box">
+      <b>Dự báo tháng</b> = FYP đã chắc (PH) + 50% FYP tiềm năng (CP/CF) + 30% giá trị hồ sơ đang Pending. Đây là ước tính tham khảo, không phải cam kết chính thức.
+    </div>
+  </div>
 </div>
 
 <!-- LOGIN MODAL -->
@@ -200,9 +250,13 @@ const auth = getAuth(app);
 let currentUser = null;
 let reportData = [];          // from reports/{month}
 let manmark = defaultManmark(); // from manmark/{year-month}
-let unsubReports = null, unsubManmark = null;
+let unsubReports = null, unsubManmark = null, unsubPending = null;
 let uploadedRows = null, uploadedHeaders = null, uploadedHeaderColMap = null;
 let saveTimer = null;
+let pendingDoc = { snapshots:{}, statuses:{}, goneMap:{}, lastDate:'' };
+let yearlyHistory = {}; // { [month(1-12)]: { reportData:[...], commits:{...} } } cho năm đang chọn
+let yearlyHistoryYear = null;
+let detailChartWeekly = null, detailChartMonthly = null;
 
 function defaultManmark(){
   return { weeks: defaultWeeks(currentMonth()), commits: {}, notes: {}, excluded: {}, updatedAt:null, updatedBy:null };
@@ -273,6 +327,7 @@ function loadAll(){
   if(!currentUser) return;
   if(unsubReports) unsubReports();
   if(unsubManmark) unsubManmark();
+  if(unsubPending) unsubPending();
   const m = currentMonth();
   unsubReports = onSnapshot(doc(db,'reports',String(m)), snap=>{
     const raw = snap.exists() ? snap.data().data : null;
@@ -286,6 +341,34 @@ function loadAll(){
     if(!manmark.weeks || !manmark.weeks.length) manmark.weeks = defaultWeeks(m);
     renderAll();
   }, err=>{ console.error('manmark read error (có thể chưa thêm rule cho collection manmark):', err); manmark=defaultManmark(); renderAll(); });
+  unsubPending = onSnapshot(doc(db,'pending_cases','main'), snap=>{
+    pendingDoc = snap.exists() ? Object.assign({snapshots:{},statuses:{},goneMap:{},lastDate:''}, snap.data()) : {snapshots:{},statuses:{},goneMap:{},lastDate:''};
+    renderAll();
+  }, err=>{ console.error('pending_cases read error:', err); pendingDoc={snapshots:{},statuses:{},goneMap:{},lastDate:''}; renderAll(); });
+  loadYearlyHistory();
+}
+
+// ── Lịch sử cả năm (cho xu hướng theo tháng + cảnh báo giảm liên tiếp) ──
+async function loadYearlyHistory(){
+  const y = currentYear();
+  if(yearlyHistoryYear===y && Object.keys(yearlyHistory).length) { renderAll(); return; } // đã có cache cho năm này
+  yearlyHistoryYear = y;
+  const months = Array.from({length:12},(_,i)=>i+1);
+  const results = await Promise.all(months.map(async m=>{
+    try{
+      const [repSnap, mmSnap] = await Promise.all([
+        getDoc(doc(db,'reports',String(m))),
+        getDoc(doc(db,'manmark',`${y}-${m}`)),
+      ]);
+      const raw = repSnap.exists() ? repSnap.data().data : null;
+      const rData = Array.isArray(raw) ? raw : (raw && typeof raw==='object' ? Object.values(raw) : []);
+      const mmData = mmSnap.exists() ? mmSnap.data() : { commits:{} };
+      return { m, reportData:rData, commits: mmData.commits||{} };
+    }catch(e){ return { m, reportData:[], commits:{} }; }
+  }));
+  yearlyHistory = {};
+  results.forEach(r=>{ yearlyHistory[r.m] = { reportData:r.reportData, commits:r.commits }; });
+  renderAll();
 }
 
 function saveManmark(){
@@ -509,7 +592,9 @@ function renderHeader(){
     <th class="col-sticky sortable" rowspan="3" onclick="toggleSort('code')">Mã TVV${arrow('code')}</th>
     <th class="col-sticky col-name sortable" rowspan="3" onclick="toggleSort('name')">Tên TVV${arrow('name')}</th>
     <th class="sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('monthTarget')">Cam kết tháng${arrow('monthTarget')}</th>
-    <th class="sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('monthActual')">Thực đạt tháng${arrow('monthActual')}</th>`;
+    <th class="sortable" rowspan="3" style="min-width:100px" onclick="toggleSort('monthActual')">Thực đạt tháng${arrow('monthActual')}</th>
+    <th class="sortable" rowspan="3" style="min-width:80px" onclick="toggleSort('pending')" title="Tổng APE hồ sơ đang chờ xử lý (chưa PH, chưa rút)">Pending${arrow('pending')}</th>
+    <th class="sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('forecast')" title="Đã chắc + 50% tiềm năng + 30% pending">Dự báo tháng${arrow('forecast')}</th>`;
   weeks.forEach(w=>{ thead += `<th class="week-head" colspan="5">${escAttr(w.label)} (${w.start}–${w.end})</th>`; });
   thead += `<th rowspan="3" style="min-width:34px">Xoá</th></tr><tr>`;
   weeks.forEach((w,wi)=>{
@@ -524,7 +609,9 @@ function renderHeader(){
     <th class="col-sticky"><input class="filter-input" oninput="onFilterInput('code',this.value)" value="${escAttr(filterState.code)}"/></th>
     <th class="col-sticky"><input class="filter-input" oninput="onFilterInput('name',this.value)" value="${escAttr(filterState.name)}"/></th>
     <th><input class="filter-input" oninput="onFilterInput('monthTarget',this.value)" value="${escAttr(filterState.monthTarget)}"/></th>
-    <th><input class="filter-input" oninput="onFilterInput('monthActual',this.value)" value="${escAttr(filterState.monthActual)}"/></th>`;
+    <th><input class="filter-input" oninput="onFilterInput('monthActual',this.value)" value="${escAttr(filterState.monthActual)}"/></th>
+    <th><input class="filter-input" oninput="onFilterInput('pending',this.value)" value="${escAttr(filterState.pending)}"/></th>
+    <th><input class="filter-input" oninput="onFilterInput('forecast',this.value)" value="${escAttr(filterState.forecast)}"/></th>`;
   weeks.forEach((w,wi)=>{
     ['ckfyp','tdfyp','ckhs','tdhs','note'].forEach(f=>{
       const id = `w${wi}_${f}`;
@@ -539,17 +626,68 @@ function renderHeader(){
 function findPersonByCode(code){
   return (Array.isArray(reportData)?reportData:[]).find(p=>String(p?.msdl||'').trim()===String(code).trim());
 }
+// Tách "Đã chắc" (status=issued/PH) và "Tiềm năng" (status=paid/CP hoặc none/CF)
 function actualsForPerson(person, weeks){
-  const res = weeks.map(()=>({fyp:0, hs:0}));
+  const res = weeks.map(()=>({fyp:0, hs:0, confirmedFyp:0, confirmedHs:0, potentialFyp:0, potentialHs:0}));
   if(!person || !person.daily) return res;
   Object.keys(person.daily).forEach(dayKey=>{
     const day = parseInt(dayKey);
     const wIdx = weeks.findIndex(w=>day>=w.start && day<=w.end);
     if(wIdx===-1) return;
     const cases = person.daily[dayKey]?.cases||[];
-    cases.forEach(c=>{ res[wIdx].fyp += Number(c.fee||0); res[wIdx].hs += 1; });
+    cases.forEach(c=>{
+      const fee = Number(c.fee||0);
+      res[wIdx].fyp += fee; res[wIdx].hs += 1;
+      if(c.status==='issued'){ res[wIdx].confirmedFyp += fee; res[wIdx].confirmedHs += 1; }
+      else { res[wIdx].potentialFyp += fee; res[wIdx].potentialHs += 1; }
+    });
   });
   return res;
+}
+
+// ── Giá trị hồ sơ đang Pending (từ tab Pending), theo AGCode ──
+function pendingValueByCode(code){
+  const snap = pendingDoc.snapshots?.[pendingDoc.lastDate];
+  if(!Array.isArray(snap)) return { value:0, count:0, cases:[] };
+  const gone = pendingDoc.goneMap || {};
+  const statuses = pendingDoc.statuses || {};
+  const mine = snap.filter(c=>String(c.agCode||'').trim()===String(code).trim() && !gone[c.key] && statuses[c.key]!=='WD');
+  const value = mine.reduce((s,c)=>s+Number(c.ape||0),0);
+  return { value, count: mine.length, cases: mine };
+}
+
+// ── Xu hướng theo tháng (từ yearlyHistory) — trả về mảng 12 tháng + moving avg 3 tháng + hướng ──
+function monthlyTrendForCode(code){
+  const months = [];
+  for(let m=1;m<=12;m++){
+    const h = yearlyHistory[m];
+    if(!h){ months.push({m, commit:0, actual:0}); continue; }
+    const commit = h.commits?.[code]?.monthTarget || 0;
+    const person = (h.reportData||[]).find(p=>String(p?.msdl||'').trim()===String(code).trim());
+    let actual = 0;
+    if(person && person.daily){
+      Object.values(person.daily).forEach(d=>{ (d?.cases||[]).forEach(c=>{ actual += Number(c.fee||0); }); });
+    }
+    months.push({ m, commit, actual });
+  }
+  // moving average 3 tháng của actual
+  const ma3 = months.map((_,i)=>{
+    const slice = months.slice(Math.max(0,i-2), i+1).map(x=>x.actual);
+    return slice.reduce((a,b)=>a+b,0)/slice.length;
+  });
+  // hướng: so sánh MA 3 tháng gần nhất (đã có dữ liệu >0) vs 3 tháng trước đó
+  const withData = months.map((x,i)=>({...x, i})).filter(x=>x.actual>0);
+  let trendDir = 'flat';
+  if(withData.length>=4){
+    const lastIdx = withData[withData.length-1].i;
+    const recent3 = months.slice(Math.max(0,lastIdx-2), lastIdx+1).reduce((s,x)=>s+x.actual,0)/3;
+    const prev3 = months.slice(Math.max(0,lastIdx-5), Math.max(0,lastIdx-2)).reduce((s,x)=>s+x.actual,0)/3;
+    if(prev3>0){
+      if(recent3 > prev3*1.1) trendDir='up';
+      else if(recent3 < prev3*0.9) trendDir='down';
+    }
+  }
+  return { months, ma3, trendDir };
 }
 
 function buildRows(){
@@ -558,6 +696,7 @@ function buildRows(){
   (Array.isArray(reportData)?reportData:[]).forEach(p=>{ if(p && p.msdl) codes.add(String(p.msdl).trim()); });
   const excluded = manmark.excluded || {};
   const list = Array.from(codes).filter(c=>!excluded[c]);
+  const todayDay = (currentMonth()===new Date().getMonth()+1 && currentYear()===new Date().getFullYear()) ? new Date().getDate() : 999;
   return list.map(code=>{
     const commit = manmark.commits?.[code];
     const person = findPersonByCode(code);
@@ -568,14 +707,29 @@ function buildRows(){
     const weekly = commit?.weekly || weeks.map(()=>({fyp:0,hs:0}));
     const actuals = actualsForPerson(person, weeks);
     const monthActual = actuals.reduce((s,a)=>s+a.fyp,0);
+    const monthConfirmed = actuals.reduce((s,a)=>s+a.confirmedFyp,0);
+    const monthPotential = actuals.reduce((s,a)=>s+a.potentialFyp,0);
+    const pending = pendingValueByCode(code);
+    const forecast = monthConfirmed + monthPotential*0.5 + pending.value*0.3;
     const weeksData = weeks.map((w,wi)=>({
       ckfyp: (weekly[wi]||{}).fyp || 0,
       tdfyp: (actuals[wi]||{}).fyp || 0,
+      confirmedFyp: (actuals[wi]||{}).confirmedFyp || 0,
+      potentialFyp: (actuals[wi]||{}).potentialFyp || 0,
       ckhs: (weekly[wi]||{}).hs || 0,
       tdhs: (actuals[wi]||{}).hs || 0,
+      confirmedHs: (actuals[wi]||{}).confirmedHs || 0,
+      potentialHs: (actuals[wi]||{}).potentialHs || 0,
       note: manmark.notes?.[code]?.[wi] || '',
+      passed: w.end <= todayDay,
+      miss: w.end<=todayDay && (weekly[wi]?.fyp||0)>0 && (actuals[wi]?.fyp||0) < (weekly[wi]?.fyp||0),
     }));
-    return { code, unit, name, monthTarget, monthActual, isNew, weeks: weeksData };
+    // cảnh báo: 2 tuần liên tiếp (đã qua) chưa đạt cam kết
+    let consecutiveMiss = 0, maxConsecutiveMiss = 0;
+    weeksData.forEach(wd=>{ if(wd.passed){ consecutiveMiss = wd.miss ? consecutiveMiss+1 : 0; maxConsecutiveMiss = Math.max(maxConsecutiveMiss, consecutiveMiss); } });
+    const trend = monthlyTrendForCode(code);
+    return { code, unit, name, monthTarget, monthActual, monthConfirmed, monthPotential, pending, forecast,
+      maxConsecutiveMiss, trend, isNew, weeks: weeksData };
   });
 }
 
@@ -585,6 +739,8 @@ function getColValue(row, colId){
   if(colId==='name') return row.name;
   if(colId==='monthTarget') return row.monthTarget;
   if(colId==='monthActual') return row.monthActual;
+  if(colId==='pending') return row.pending.value;
+  if(colId==='forecast') return row.forecast;
   const m = colId.match(/^w(\d+)_(ckfyp|tdfyp|ckhs|tdhs|note)$/);
   if(m) return row.weeks[+m[1]]?.[m[2]];
   return '';
@@ -616,24 +772,35 @@ function renderBody(){
   const rows = applyFiltersSort(buildRows());
 
   let tbody = '';
-  let totalMonthCommit=0, totalMonthActual=0;
+  let totalMonthCommit=0, totalMonthActual=0, totalPending=0, totalForecast=0;
   const weekTotals = weeks.map(()=>({ckFyp:0, tdFyp:0, ckHs:0, tdHs:0}));
 
   rows.forEach((row,i)=>{
     totalMonthCommit += row.monthTarget; totalMonthActual += row.monthActual;
+    totalPending += row.pending.value; totalForecast += row.forecast;
+    const badges = [
+      row.maxConsecutiveMiss>=2 ? `<span class="warn-badge miss" title="Chưa đạt cam kết ${row.maxConsecutiveMiss} tuần liên tiếp">⚠️ ${row.maxConsecutiveMiss} tuần</span>` : '',
+      row.trend.trendDir==='down' ? `<span class="warn-badge trend" title="Xu hướng giảm so với giai đoạn trước">📉 Giảm</span>` : '',
+    ].join('');
     tbody += `<tr>
       <td class="col-sticky">${i+1}</td>
       <td class="col-sticky">${escAttr(row.unit)}</td>
       <td class="col-sticky">${escAttr(row.code)}</td>
-      <td class="col-sticky col-name">${escAttr(row.name)}${row.isNew?'<span class="new-badge">Mới</span>':''}</td>
+      <td class="col-sticky col-name"><span class="name-link" onclick="openTvvDetail('${row.code}')">${escAttr(row.name)}</span>${row.isNew?'<span class="new-badge">Mới</span>':''}${badges}</td>
       <td><input class="cell-edit" type="number" value="${row.monthTarget||''}" onchange="updateCommitMonth('${row.code}',this.value)"/></td>
-      <td class="actual-cell ${statusClass(row.monthActual,row.monthTarget)}">${fmt(row.monthActual)}</td>`;
+      <td class="actual-cell ${statusClass(row.monthActual,row.monthTarget)}">${fmt(row.monthActual)}
+        <div class="breakdown"><span class="confirmed">${fmt(row.monthConfirmed)} chắc</span> · <span class="potential">${fmt(row.monthPotential)} TN</span></div>
+      </td>
+      <td class="pending-cell">${fmt(row.pending.value)}${row.pending.count?`<div class="breakdown">${row.pending.count} hồ sơ</div>`:''}</td>
+      <td class="forecast-cell ${statusClass(row.forecast,row.monthTarget)}">${fmt(Math.round(row.forecast))}</td>`;
     row.weeks.forEach((wd,wi)=>{
       weekTotals[wi].ckFyp += wd.ckfyp; weekTotals[wi].tdFyp += wd.tdfyp;
       weekTotals[wi].ckHs += wd.ckhs; weekTotals[wi].tdHs += wd.tdhs;
       tbody += `
         <td><input class="cell-edit" type="number" value="${wd.ckfyp||''}" onchange="updateCommitWeek('${row.code}',${wi},'fyp',this.value)"/></td>
-        <td class="actual-cell ${statusClass(wd.tdfyp,wd.ckfyp)}">${fmt(wd.tdfyp)}</td>
+        <td class="actual-cell ${statusClass(wd.tdfyp,wd.ckfyp)}">${fmt(wd.tdfyp)}
+          ${wd.tdfyp?`<div class="breakdown"><span class="confirmed">${fmt(wd.confirmedFyp)}</span>/<span class="potential">${fmt(wd.potentialFyp)}</span></div>`:''}
+        </td>
         <td><input class="cell-edit" type="number" value="${wd.ckhs||''}" onchange="updateCommitWeek('${row.code}',${wi},'hs',this.value)"/></td>
         <td class="actual-cell ${statusClass(wd.tdhs,wd.ckhs)}">${fmt(wd.tdhs)}</td>
         <td><input class="note-edit" type="text" value="${escAttr(wd.note)}" placeholder="Ghi chú..." onchange="updateNote('${row.code}',${wi},this.value)"/></td>`;
@@ -644,7 +811,9 @@ function renderBody(){
   tbody += `<tr style="background:#f8f9ff;font-weight:700">
     <td class="col-sticky" colspan="4">TỔNG (${rows.length} TVV)</td>
     <td>${fmt(totalMonthCommit)}</td>
-    <td>${fmt(totalMonthActual)}</td>`;
+    <td>${fmt(totalMonthActual)}</td>
+    <td>${fmt(totalPending)}</td>
+    <td>${fmt(Math.round(totalForecast))}</td>`;
   weekTotals.forEach(wt=>{
     tbody += `<td>${fmt(wt.ckFyp)}</td><td>${fmt(wt.tdFyp)}</td><td>${fmt(wt.ckHs)}</td><td>${fmt(wt.tdHs)}</td><td></td>`;
   });
@@ -652,7 +821,7 @@ function renderBody(){
 
   document.getElementById('tableBody').innerHTML = tbody || `<tr><td colspan="99" style="padding:20px;color:#8896aa">Chưa có dữ liệu — hãy đăng nhập, upload DATA tháng, hoặc kiểm tra reports/${currentMonth()} đã có dữ liệu sales report chưa.</td></tr>`;
 
-  renderKpi(rows.length, totalMonthCommit, totalMonthActual);
+  renderKpi(rows.length, totalMonthCommit, totalMonthActual, totalForecast);
 }
 
 function statusClass(actual, target){
@@ -664,16 +833,75 @@ function statusClass(actual, target){
   return 'status-red';
 }
 
-function renderKpi(count, commit, actual){
+function renderKpi(count, commit, actual, forecast){
   const pct = commit ? Math.round(actual/commit*100) : 0;
+  const fpct = commit ? Math.round(forecast/commit*100) : 0;
   document.getElementById('kpiBar').innerHTML = `
     <div class="kpi-chip"><div class="lbl">Tổng TVV</div><div class="val">${count}</div></div>
     <div class="kpi-chip"><div class="lbl">Cam kết tháng</div><div class="val">${fmt(commit)}</div></div>
     <div class="kpi-chip"><div class="lbl">Thực đạt tháng</div><div class="val">${fmt(actual)}</div></div>
-    <div class="kpi-chip"><div class="lbl">% Đạt</div><div class="val" style="color:${pct>=100?'#0f9d58':pct>=70?'#b45309':'#c0243c'}">${pct}%</div></div>`;
+    <div class="kpi-chip"><div class="lbl">% Đạt</div><div class="val" style="color:${pct>=100?'#0f9d58':pct>=70?'#b45309':'#c0243c'}">${pct}%</div></div>
+    <div class="kpi-chip"><div class="lbl">Dự báo tháng</div><div class="val" style="color:${fpct>=100?'#0f9d58':fpct>=70?'#b45309':'#c0243c'}">${fmt(Math.round(forecast))}</div></div>`;
 }
 
-// ── Add / delete TVV ──
+// ── Chi tiết TVV: chart tuần trong tháng + xu hướng cả năm + pending ──
+function openTvvDetail(code){
+  const weeks = currentWeeks();
+  const row = buildRows().find(r=>r.code===code);
+  if(!row){ return; }
+  document.getElementById('detailTitle').textContent = `${row.name} ${row.isNew?'(chưa có cam kết)':''}`;
+  document.getElementById('detailSub').textContent = `Unit ${row.unit||'—'} · Mã TVV ${row.code}`;
+
+  const trend = row.trend;
+  const dirLabel = trend.trendDir==='up' ? '📈 Xu hướng tăng' : trend.trendDir==='down' ? '📉 Xu hướng giảm' : '➡️ Ổn định';
+  const dirClass = trend.trendDir==='up' ? 'trend-up' : trend.trendDir==='down' ? 'trend-down' : 'trend-flat';
+  document.getElementById('detailTrendChip').innerHTML = `<span class="trend-chip ${dirClass}">${dirLabel}</span>
+    ${row.maxConsecutiveMiss>=2?`<span class="warn-badge miss" style="margin-left:6px">⚠️ Chưa đạt cam kết ${row.maxConsecutiveMiss} tuần liên tiếp</span>`:''}`;
+
+  // Chart 1: tuần trong tháng
+  const wLabels = weeks.map(w=>w.label);
+  const wCommit = row.weeks.map(w=>w.ckfyp);
+  const wActual = row.weeks.map(w=>w.tdfyp);
+  if(detailChartWeekly) detailChartWeekly.destroy();
+  detailChartWeekly = new Chart(document.getElementById('chartWeekly'), {
+    type:'bar',
+    data:{ labels:wLabels, datasets:[
+      { label:'Cam kết', data:wCommit, backgroundColor:'#c7d2fe' },
+      { label:'Thực đạt', data:wActual, backgroundColor:'#4361ee' },
+    ]},
+    options:{ responsive:true, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}}, scales:{y:{beginAtZero:true}} }
+  });
+
+  // Chart 2: xu hướng cả năm
+  const mLabels = trend.months.map(m=>`T${m.m}`);
+  if(detailChartMonthly) detailChartMonthly.destroy();
+  detailChartMonthly = new Chart(document.getElementById('chartMonthly'), {
+    type:'line',
+    data:{ labels:mLabels, datasets:[
+      { label:'Cam kết', data:trend.months.map(m=>m.commit), borderColor:'#c7d2fe', backgroundColor:'transparent', tension:.2 },
+      { label:'Thực đạt', data:trend.months.map(m=>m.actual), borderColor:'#4361ee', backgroundColor:'transparent', tension:.2 },
+      { label:'TB trượt 3 tháng', data:trend.ma3, borderColor:'#f59e0b', borderDash:[5,3], backgroundColor:'transparent', tension:.2 },
+    ]},
+    options:{ responsive:true, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}}, scales:{y:{beginAtZero:true}} }
+  });
+
+  // Danh sách pending
+  const pend = row.pending;
+  const listEl = document.getElementById('detailPendingList');
+  if(!pend.cases.length){
+    listEl.innerHTML = `<div style="color:#8896aa;padding:8px">Không có hồ sơ đang chờ xử lý.</div>`;
+  } else {
+    listEl.innerHTML = `<table style="width:100%;border-collapse:collapse">
+      <tr style="color:#8896aa;text-align:left"><th>ProposalNum</th><th>Sản phẩm</th><th style="text-align:right">APE</th><th>Ngày nộp</th></tr>
+      ${pend.cases.map(c=>`<tr><td>${escAttr(c.proposalNum)}</td><td>${escAttr(c.productName||'')}</td><td style="text-align:right">${fmt(c.ape)}</td><td>${escAttr(c.proposalDate||'')}</td></tr>`).join('')}
+    </table>`;
+  }
+
+  document.getElementById('detailModal').style.display='flex';
+}
+function closeDetailModal(){ document.getElementById('detailModal').style.display='none'; }
+
+
 function openAddTvvModal(){
   if(!requireLogin()) return;
   document.getElementById('atv-unit').value='';
@@ -778,6 +1006,7 @@ Object.assign(window, {
   updateCommitMonth, updateCommitWeek, updateNote,
   exportExcel, toggleSort, onFilterInput,
   openAddTvvModal, closeAddTvvModal, saveAddTvv, deleteRow,
+  openTvvDetail, closeDetailModal,
 });
 </script>
 </body>
