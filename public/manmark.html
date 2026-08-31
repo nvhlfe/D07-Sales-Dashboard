@@ -172,7 +172,10 @@
       <div class="pending-list" id="detailPendingList"></div>
     </div>
     <div class="legend-box">
-      <b>Dự báo tháng</b> = FYP đã chắc (PH) + 50% FYP tiềm năng (CP/CF) + 30% giá trị hồ sơ đang Pending. Đây là ước tính tham khảo, không phải cam kết chính thức.
+      <b>3 kịch bản dự báo:</b> Thấp = chỉ tính FYP đã chắc (PH). Cao = giả định toàn bộ tiềm năng (CP/CF) + Pending đều chuyển đổi thành công.
+      Vừa = Đã chắc + (Tiềm năng + Pending) × <b>tỷ lệ chuyển đổi lịch sử thật</b> của từng người (ưu tiên cá nhân ≥5 hồ sơ quá khứ, nếu chưa đủ dùng tỷ lệ Unit ≥15 hồ sơ, nếu vẫn chưa đủ dùng mặc định 50%).<br/>
+      <b>Cảnh báo bất thường</b> (📉) so tháng gần nhất đã hoàn tất với trung bình ± độ lệch chuẩn của các tháng trước đó của chính người đó (z ≤ −1.5), không dùng ngưỡng % cố định chung cho mọi người.<br/>
+      Đây là ước tính tham khảo dựa trên dữ liệu lịch sử trong năm đang chọn, không phải cam kết chính thức.
     </div>
   </div>
 </div>
@@ -384,6 +387,7 @@ async function loadYearlyHistory(){
   }));
   yearlyHistory = {};
   results.forEach(r=>{ yearlyHistory[r.m] = { reportData:r.reportData, commits:r.commits }; });
+  conversionIndexCache = null; conversionIndexKey = null;
   renderAll();
 }
 
@@ -672,7 +676,7 @@ function pendingValueByCode(code){
   return { value, count: mine.length, cases: mine };
 }
 
-// ── Xu hướng theo tháng (từ yearlyHistory) — trả về mảng 12 tháng + moving avg 3 tháng + hướng ──
+// ── Xu hướng theo tháng (từ yearlyHistory) — trả về mảng 12 tháng + moving avg 3 tháng + độ lệch chuẩn (z-score) ──
 function monthlyTrendForCode(code){
   const months = [];
   for(let m=1;m<=12;m++){
@@ -691,19 +695,72 @@ function monthlyTrendForCode(code){
     const slice = months.slice(Math.max(0,i-2), i+1).map(x=>x.actual);
     return slice.reduce((a,b)=>a+b,0)/slice.length;
   });
-  // hướng: so sánh MA 3 tháng gần nhất (đã có dữ liệu >0) vs 3 tháng trước đó
-  const withData = months.map((x,i)=>({...x, i})).filter(x=>x.actual>0);
-  let trendDir = 'flat';
-  if(withData.length>=4){
-    const lastIdx = withData[withData.length-1].i;
-    const recent3 = months.slice(Math.max(0,lastIdx-2), lastIdx+1).reduce((s,x)=>s+x.actual,0)/3;
-    const prev3 = months.slice(Math.max(0,lastIdx-5), Math.max(0,lastIdx-2)).reduce((s,x)=>s+x.actual,0)/3;
-    if(prev3>0){
-      if(recent3 > prev3*1.1) trendDir='up';
-      else if(recent3 < prev3*0.9) trendDir='down';
+  // Z-score: so sánh THÁNG ĐÃ HOÀN TẤT GẦN NHẤT với baseline (trung bình ± độ lệch chuẩn) của
+  // các tháng trước đó — không dùng tháng hiện tại vì tháng hiện tại chưa kết thúc, so sẽ khập khiễng.
+  const curM = currentMonth();
+  const priorWithData = months.filter(x=>x.m<curM && x.actual>0);
+  let z = null, trendDir = 'flat', baselineMean = null, baselineStd = null, lastCompletedMonth = null;
+  if(priorWithData.length>=4){
+    lastCompletedMonth = priorWithData[priorWithData.length-1];
+    const baseline = priorWithData.slice(0, -1);
+    const mean = baseline.reduce((s,x)=>s+x.actual,0)/baseline.length;
+    const variance = baseline.reduce((s,x)=>s+Math.pow(x.actual-mean,2),0)/baseline.length;
+    const std = Math.sqrt(variance);
+    baselineMean = mean; baselineStd = std;
+    if(std>0){
+      z = (lastCompletedMonth.actual - mean) / std;
+      if(z<=-1.5) trendDir='down'; else if(z>=1.5) trendDir='up';
     }
   }
-  return { months, ma3, trendDir };
+  return { months, ma3, trendDir, z, baselineMean, baselineStd, lastCompletedMonth };
+}
+
+// ── Tỷ lệ chuyển đổi (Tiềm năng/Pending → Đã chắc) tính từ lịch sử THẬT của từng người/Unit ──
+// Dựa trên trạng thái HIỆN TẠI của các hồ sơ phát sinh ở những tháng ĐÃ QUA (trước tháng đang xem)
+// trong năm đang chọn — vì hồ sơ tháng cũ đã có đủ thời gian để "chốt" (issued) hay không.
+let conversionIndexCache = null, conversionIndexKey = null;
+function getConversionIndex(){
+  const key = `${currentYear()}-${currentMonth()}`;
+  if(conversionIndexCache && conversionIndexKey===key) return conversionIndexCache;
+  const byCode = {}, byUnit = {};
+  const curM = currentMonth();
+  for(let m=1;m<curM;m++){
+    const h = yearlyHistory[m];
+    if(!h) continue;
+    (h.reportData||[]).forEach(p=>{
+      if(!p?.daily) return;
+      const code = String(p.msdl||'').trim(); if(!code) return;
+      const unit = String(p.group||'').trim();
+      byCode[code] = byCode[code] || {issuedSum:0,totalSum:0,issuedCount:0,totalCount:0};
+      byUnit[unit] = byUnit[unit] || {issuedSum:0,totalSum:0,issuedCount:0,totalCount:0};
+      Object.values(p.daily).forEach(d=>{
+        (d?.cases||[]).forEach(c=>{
+          const fee = Number(c.fee||0), issued = c.status==='issued';
+          byCode[code].totalSum += fee; byCode[code].totalCount++;
+          byUnit[unit].totalSum += fee; byUnit[unit].totalCount++;
+          if(issued){ byCode[code].issuedSum+=fee; byCode[code].issuedCount++; byUnit[unit].issuedSum+=fee; byUnit[unit].issuedCount++; }
+        });
+      });
+    });
+  }
+  conversionIndexCache = { byCode, byUnit };
+  conversionIndexKey = key;
+  return conversionIndexCache;
+}
+const CONV_MIN_PERSONAL = 5;   // tối thiểu 5 hồ sơ lịch sử cá nhân mới tin số cá nhân
+const CONV_MIN_UNIT = 15;      // tối thiểu 15 hồ sơ lịch sử của Unit mới tin số Unit
+const CONV_DEFAULT_RATE = 0.5; // dùng khi chưa đủ dữ liệu cả cá nhân lẫn Unit
+function personalConversionRate(code, unit){
+  const idx = getConversionIndex();
+  const p = idx.byCode[code];
+  if(p && p.totalCount>=CONV_MIN_PERSONAL){
+    return { rate: p.totalSum ? p.issuedSum/p.totalSum : CONV_DEFAULT_RATE, source:'personal', sample:p.totalCount };
+  }
+  const u = idx.byUnit[unit];
+  if(u && u.totalCount>=CONV_MIN_UNIT){
+    return { rate: u.totalSum ? u.issuedSum/u.totalSum : CONV_DEFAULT_RATE, source:'unit', sample:u.totalCount };
+  }
+  return { rate: CONV_DEFAULT_RATE, source:'default', sample:0 };
 }
 
 function buildRows(){
@@ -726,7 +783,12 @@ function buildRows(){
     const monthConfirmed = actuals.reduce((s,a)=>s+a.confirmedFyp,0);
     const monthPotential = actuals.reduce((s,a)=>s+a.potentialFyp,0);
     const pending = pendingValueByCode(code);
-    const forecast = monthConfirmed + monthPotential*0.5 + pending.value*0.3;
+    const conv = personalConversionRate(code, unit);
+    const convertible = monthPotential + pending.value;
+    const forecastLow = monthConfirmed;                              // Thấp: chỉ tính phần đã chắc
+    const forecastMid = monthConfirmed + convertible * conv.rate;    // Vừa: theo tỷ lệ chuyển đổi lịch sử thật
+    const forecastHigh = monthConfirmed + convertible;                // Cao: giả định toàn bộ đều chuyển đổi
+    const forecast = forecastMid; // giữ tên "forecast" = kịch bản Vừa, dùng cho sort/filter/KPI như cũ
     const weeksData = weeks.map((w,wi)=>({
       ckfyp: (weekly[wi]||{}).fyp || 0,
       tdfyp: (actuals[wi]||{}).fyp || 0,
@@ -745,6 +807,7 @@ function buildRows(){
     weeksData.forEach(wd=>{ if(wd.passed){ consecutiveMiss = wd.miss ? consecutiveMiss+1 : 0; maxConsecutiveMiss = Math.max(maxConsecutiveMiss, consecutiveMiss); } });
     const trend = monthlyTrendForCode(code);
     return { code, unit, name, monthTarget, monthActual, monthConfirmed, monthPotential, pending, forecast,
+      forecastLow, forecastMid, forecastHigh, conv,
       maxConsecutiveMiss, trend, isNew, weeks: weeksData };
   });
 }
@@ -794,10 +857,14 @@ function renderBody(){
   rows.forEach((row,i)=>{
     totalMonthCommit += row.monthTarget; totalMonthActual += row.monthActual;
     totalPending += row.pending.value; totalForecast += row.forecast;
+    const zTxt = row.trend.z!==null ? row.trend.z.toFixed(1) : '';
     const badges = [
       row.maxConsecutiveMiss>=2 ? `<span class="warn-badge miss" title="Chưa đạt cam kết ${row.maxConsecutiveMiss} tuần liên tiếp">⚠️ ${row.maxConsecutiveMiss} tuần</span>` : '',
-      row.trend.trendDir==='down' ? `<span class="warn-badge trend" title="Xu hướng giảm so với giai đoạn trước">📉 Giảm</span>` : '',
+      row.trend.trendDir==='down' ? `<span class="warn-badge trend" title="Tháng gần nhất thấp hơn trung bình cá nhân ${Math.abs(zTxt)} độ lệch chuẩn (z=${zTxt})">📉 Bất thường (z=${zTxt})</span>` : '',
     ].join('');
+    const convTitle = row.conv.source==='personal' ? `Tỷ lệ chuyển đổi cá nhân: ${Math.round(row.conv.rate*100)}% (${row.conv.sample} hồ sơ lịch sử)`
+      : row.conv.source==='unit' ? `Chưa đủ dữ liệu cá nhân — dùng tỷ lệ Unit: ${Math.round(row.conv.rate*100)}% (${row.conv.sample} hồ sơ)`
+      : `Chưa đủ dữ liệu lịch sử — dùng tỷ lệ mặc định 50%`;
     tbody += `<tr>
       <td class="col-sticky">${i+1}</td>
       <td class="col-sticky">${escAttr(row.unit)}</td>
@@ -808,7 +875,9 @@ function renderBody(){
         <div class="breakdown"><span class="confirmed">${fmt(row.monthConfirmed)} chắc</span> · <span class="potential">${fmt(row.monthPotential)} TN</span></div>
       </td>
       <td class="pending-cell">${fmt(row.pending.value)}${row.pending.count?`<div class="breakdown">${row.pending.count} hồ sơ</div>`:''}</td>
-      <td class="forecast-cell ${statusClass(row.forecast,row.monthTarget)}">${fmt(Math.round(row.forecast))}</td>`;
+      <td class="forecast-cell ${statusClass(row.forecast,row.monthTarget)}" title="${escAttr(convTitle)}">${fmt(Math.round(row.forecastMid))}
+        <div class="breakdown">Thấp ${fmt(Math.round(row.forecastLow))} · Cao ${fmt(Math.round(row.forecastHigh))}</div>
+      </td>`;
     row.weeks.forEach((wd,wi)=>{
       weekTotals[wi].ckFyp += wd.ckfyp; weekTotals[wi].tdFyp += wd.tdfyp;
       weekTotals[wi].ckHs += wd.ckhs; weekTotals[wi].tdHs += wd.tdhs;
@@ -869,10 +938,16 @@ function openTvvDetail(code){
   document.getElementById('detailSub').textContent = `Unit ${row.unit||'—'} · Mã TVV ${row.code}`;
 
   const trend = row.trend;
-  const dirLabel = trend.trendDir==='up' ? '📈 Xu hướng tăng' : trend.trendDir==='down' ? '📉 Xu hướng giảm' : '➡️ Ổn định';
+  const dirLabel = trend.trendDir==='up' ? '📈 Xu hướng tăng' : trend.trendDir==='down' ? '📉 Bất thường thấp' : '➡️ Ổn định';
   const dirClass = trend.trendDir==='up' ? 'trend-up' : trend.trendDir==='down' ? 'trend-down' : 'trend-flat';
+  const zInfo = trend.z!==null
+    ? `Tháng ${trend.lastCompletedMonth.m} (gần nhất đã hoàn tất): ${fmt(trend.lastCompletedMonth.actual)} — trung bình cá nhân ${fmt(Math.round(trend.baselineMean))} ± ${fmt(Math.round(trend.baselineStd))} (z=${trend.z.toFixed(1)})`
+    : 'Chưa đủ dữ liệu lịch sử (cần ≥4 tháng có phát sinh) để tính độ lệch chuẩn.';
   document.getElementById('detailTrendChip').innerHTML = `<span class="trend-chip ${dirClass}">${dirLabel}</span>
-    ${row.maxConsecutiveMiss>=2?`<span class="warn-badge miss" style="margin-left:6px">⚠️ Chưa đạt cam kết ${row.maxConsecutiveMiss} tuần liên tiếp</span>`:''}`;
+    ${row.maxConsecutiveMiss>=2?`<span class="warn-badge miss" style="margin-left:6px">⚠️ Chưa đạt cam kết ${row.maxConsecutiveMiss} tuần liên tiếp</span>`:''}
+    <div style="font-size:10.5px;color:#8896aa;margin-top:6px">${escAttr(zInfo)}</div>
+    <div style="font-size:10.5px;color:#8896aa;margin-top:2px">Dự báo tháng: <b>Thấp ${fmt(Math.round(row.forecastLow))}</b> · <b style="color:#4361ee">Vừa ${fmt(Math.round(row.forecastMid))}</b> · <b>Cao ${fmt(Math.round(row.forecastHigh))}</b>
+      — tỷ lệ chuyển đổi dùng: ${Math.round(row.conv.rate*100)}% (${row.conv.source==='personal'?'cá nhân, '+row.conv.sample+' hồ sơ':row.conv.source==='unit'?'theo Unit, '+row.conv.sample+' hồ sơ':'mặc định, chưa đủ dữ liệu'})</div>`;
 
   // Mở modal NGAY — không để lỗi vẽ chart (vd CDN Chart.js chưa tải kịp/bị chặn) làm modal không hiện ra
   document.getElementById('detailModal').style.display='flex';
