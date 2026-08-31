@@ -11,6 +11,7 @@ const METRICS = [
   { key: 'netManpower', label: 'Net Manpower', color: '#fb8500' },
   { key: 'caseNet',     label: 'Case Net',     color: '#ef476f' },
   { key: 'activeFyc',   label: 'Active FYC',   color: '#00b4d8' },
+  { key: 'activeIp',    label: 'Active IP',    color: '#ffbe0b' },
 ]
 
 const CustomTooltip = ({ active, payload, label }) => {

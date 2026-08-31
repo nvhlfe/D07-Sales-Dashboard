@@ -73,7 +73,7 @@ function extractData(wb) {
       APE_NET: col('APE Net'), IP_NET: col('IP Net'), CASE_NET: col('Case Net'),
       FYC_YTD: col('FYC YTD'), IP_YTD: col('IP Net YTD'), APE_YTD: col('APE Net YTD'),
       FYP_YTD: col('FYP YTD'), SYC: col('SYC'), RYC: col('RYC'),
-      ACT_FYC: col('Active Net (FYC)'), ACT_CASE: col('Active Net (Case)'),
+      ACT_FYC: col('Active Net (FYC)'), ACT_CASE: col('Active Net (Case)'), ACT_IP: col('Active Net (IP)'),
       MDRT: col('MDRT Title'), TLDTPTT: col('TLDTPTT'),
       FYC_L12M: col('FYC L12M'), APE_SUB: col('APE Sub'),
       MONTH: col('YearMonth'),
@@ -116,6 +116,7 @@ function extractData(wb) {
       tongDaiLy:   d07rows.length,
       activeFyc:   fmtInt(sum(C.ACT_FYC)),
       activeCase:  fmtInt(sum(C.ACT_CASE)),
+      activeIp:    fmtInt(sum(C.ACT_IP)),
       mdrt:        d07rows.filter(r => r[C.MDRT] && r[C.MDRT] !== 'Not MDRT').length,
       dataMonth:   latestSheet.mNum,  // tháng mấy
     }
@@ -197,6 +198,7 @@ function extractData(wb) {
       tongDaiLy:   d07rows.length,
       activeFyc:   fmtInt(sum2(C.ACT_FYC)),
       activeCase:  fmtInt(sum2(C.ACT_CASE)),
+      activeIp:    fmtInt(sum2(C.ACT_IP)),
       mdrt:        d07rows.filter(r => r[C.MDRT] && r[C.MDRT] !== 'Not MDRT').length,
       topAgents:   Object.values(agMap)
         .sort((a, b) => b.fyp - a.fyp).slice(0, 60)
