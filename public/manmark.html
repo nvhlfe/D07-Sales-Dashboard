@@ -241,6 +241,7 @@
     <div class="field"><label>Unit</label><input type="text" id="atv-unit"/></div>
     <div class="field"><label>Mã TVV (AGCode/MSDL)</label><input type="text" id="atv-code"/></div>
     <div class="field"><label>Tên TVV</label><input type="text" id="atv-name"/></div>
+    <div class="field"><label>AG Segment</label><input type="text" id="atv-segment"/></div>
     <div class="field"><label>Cam kết tháng</label><input type="number" id="atv-month"/></div>
     <div id="atv-weeks"></div>
     <div class="modal-actions"><button class="btn btn-green" onclick="saveAddTvv()">💾 Lưu</button></div>
@@ -493,6 +494,7 @@ function openMapModal(){
   const unitIdx = guessCol(headers,[/unit/i]);
   const codeIdx = guessCol(headers,[/agcode/i, /^msdl$/i, /mã.*tvv/i]);
   const nameIdx = guessCol(headers,[/agname/i, /tên.*tvv/i, /họ.*tên/i]);
+  const segmentIdx = guessCol(headers,[/ag.?segment/i, /segment/i]);
   const monthIdx = guessCol(headers,[/^dự kiến tháng \d+$/i, /dự kiến tháng/i, /cam kết tháng/i]);
 
   // detect week columns by "Tuần N" pattern, also parse start-end from header text like (1–7)
@@ -513,7 +515,7 @@ function openMapModal(){
     return rm ? {label:`Tuần ${n}`, start:parseInt(rm[1]), end:parseInt(rm[2])} : null;
   });
 
-  uploadedHeaderColMap = { unitIdx, codeIdx, nameIdx, monthIdx, weekFyp, weekHs, weekNums, derivedWeeks };
+  uploadedHeaderColMap = { unitIdx, codeIdx, nameIdx, segmentIdx, monthIdx, weekFyp, weekHs, weekNums, derivedWeeks };
 
   const opts = (selectedIdx)=>headers.map((h,i)=>`<option value="${i}" ${i===selectedIdx?'selected':''}>${escAttr(h||'(cột '+(i+1)+')')}</option>`).join('')
     + `<option value="-1" ${selectedIdx===-1?'selected':''}>— Không có —</option>`;
@@ -523,6 +525,7 @@ function openMapModal(){
   html += row('Unit / Nhóm', 'map-unit', opts(unitIdx));
   html += row('Mã TVV (AGCode/MSDL)', 'map-code', opts(codeIdx));
   html += row('Tên TVV', 'map-name', opts(nameIdx));
+  html += row('AG Segment', 'map-segment', opts(segmentIdx));
   html += row('Cam kết tháng', 'map-month', opts(monthIdx));
   weekNums.forEach(n=>{
     html += row(`Cam kết FYP – Tuần ${n}`, `map-wfyp-${n}`, opts(weekFyp[n]??-1));
@@ -543,6 +546,7 @@ function confirmMapping(){
   const codeIdx = parseInt(document.getElementById('map-code').value);
   const nameIdx = parseInt(document.getElementById('map-name').value);
   const unitIdx = parseInt(document.getElementById('map-unit').value);
+  const segmentIdx = parseInt(document.getElementById('map-segment').value);
   const monthIdx = parseInt(document.getElementById('map-month').value);
   if(codeIdx===-1){ alert('Bắt buộc chọn cột Mã TVV'); return; }
   const weekNums = uploadedHeaderColMap.weekNums;
@@ -565,6 +569,7 @@ function confirmMapping(){
     newCommits[code] = {
       unit: unitIdx>=0 ? String(r[unitIdx]||'') : (newCommits[code]?.unit||''),
       name: nameIdx>=0 ? String(r[nameIdx]||'') : (newCommits[code]?.name||''),
+      segment: segmentIdx>=0 ? String(r[segmentIdx]||'') : (newCommits[code]?.segment||''),
       monthTarget: monthIdx>=0 ? num(r[monthIdx]) : 0,
       weekly,
     };
@@ -606,11 +611,18 @@ function onFilterInput(colId, val){
 
 function renderHeader(){
   const weeks = currentWeeks();
+  // Lấy danh sách Unit / Segment đang có để làm dropdown filter (thay vì gõ tay)
+  const rowsForOptions = buildRows();
+  const unitOptions = Array.from(new Set(rowsForOptions.map(r=>r.unit).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'vi'));
+  const segmentOptions = Array.from(new Set(rowsForOptions.map(r=>r.segment).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'vi'));
+  const selectOpts = (opts, current) => `<option value="">Tất cả</option>` + opts.map(o=>`<option value="${escAttr(o)}" ${current===o?'selected':''}>${escAttr(o)}</option>`).join('');
+
   let thead = `<tr>
     <th class="col-sticky" rowspan="3" style="min-width:26px">STT</th>
     <th class="col-sticky sortable" rowspan="3" onclick="toggleSort('unit')">Unit${arrow('unit')}</th>
     <th class="col-sticky sortable" rowspan="3" onclick="toggleSort('code')">Mã TVV${arrow('code')}</th>
     <th class="col-sticky col-name sortable" rowspan="3" onclick="toggleSort('name')">Tên TVV${arrow('name')}</th>
+    <th class="sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('segment')">AG Segment${arrow('segment')}</th>
     <th class="sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('monthTarget')">Cam kết tháng${arrow('monthTarget')}</th>
     <th class="sortable" rowspan="3" style="min-width:100px" onclick="toggleSort('monthActual')">Thực đạt tháng${arrow('monthActual')}</th>
     <th class="sortable" rowspan="3" style="min-width:80px" onclick="toggleSort('pending')" title="Tổng APE hồ sơ đang chờ xử lý (chưa PH, chưa rút)">Pending${arrow('pending')}</th>
@@ -625,9 +637,10 @@ function renderHeader(){
     });
   });
   thead += `</tr><tr>
-    <th class="col-sticky"><input class="filter-input" oninput="onFilterInput('unit',this.value)" value="${escAttr(filterState.unit)}"/></th>
+    <th class="col-sticky"><select class="filter-input" onchange="onFilterInput('unit',this.value)">${selectOpts(unitOptions, filterState.unit)}</select></th>
     <th class="col-sticky"><input class="filter-input" oninput="onFilterInput('code',this.value)" value="${escAttr(filterState.code)}"/></th>
     <th class="col-sticky"><input class="filter-input" oninput="onFilterInput('name',this.value)" value="${escAttr(filterState.name)}"/></th>
+    <th><select class="filter-input" onchange="onFilterInput('segment',this.value)">${selectOpts(segmentOptions, filterState.segment)}</select></th>
     <th><input class="filter-input" oninput="onFilterInput('monthTarget',this.value)" value="${escAttr(filterState.monthTarget)}"/></th>
     <th><input class="filter-input" oninput="onFilterInput('monthActual',this.value)" value="${escAttr(filterState.monthActual)}"/></th>
     <th><input class="filter-input" oninput="onFilterInput('pending',this.value)" value="${escAttr(filterState.pending)}"/></th>
@@ -775,6 +788,7 @@ function buildRows(){
     const person = findPersonByCode(code);
     const isNew = !commit;
     const unit = commit?.unit || person?.group || '';
+    const segment = commit?.segment || '';
     const name = commit?.name || person?.name || '(chưa rõ tên)';
     const monthTarget = commit?.monthTarget || 0;
     const weekly = commit?.weekly || weeks.map(()=>({fyp:0,hs:0}));
@@ -806,7 +820,7 @@ function buildRows(){
     let consecutiveMiss = 0, maxConsecutiveMiss = 0;
     weeksData.forEach(wd=>{ if(wd.passed){ consecutiveMiss = wd.miss ? consecutiveMiss+1 : 0; maxConsecutiveMiss = Math.max(maxConsecutiveMiss, consecutiveMiss); } });
     const trend = monthlyTrendForCode(code);
-    return { code, unit, name, monthTarget, monthActual, monthConfirmed, monthPotential, pending, forecast,
+    return { code, unit, segment, name, monthTarget, monthActual, monthConfirmed, monthPotential, pending, forecast,
       forecastLow, forecastMid, forecastHigh, conv,
       maxConsecutiveMiss, trend, isNew, weeks: weeksData };
   });
@@ -814,6 +828,7 @@ function buildRows(){
 
 function getColValue(row, colId){
   if(colId==='unit') return row.unit;
+  if(colId==='segment') return row.segment;
   if(colId==='code') return row.code;
   if(colId==='name') return row.name;
   if(colId==='monthTarget') return row.monthTarget;
@@ -824,7 +839,7 @@ function getColValue(row, colId){
   if(m) return row.weeks[+m[1]]?.[m[2]];
   return '';
 }
-function isNumericCol(colId){ return colId!=='unit' && colId!=='code' && colId!=='name' && !colId.endsWith('_note'); }
+function isNumericCol(colId){ return colId!=='unit' && colId!=='segment' && colId!=='code' && colId!=='name' && !colId.endsWith('_note'); }
 
 function applyFiltersSort(rows){
   let out = rows;
@@ -870,6 +885,7 @@ function renderBody(){
       <td class="col-sticky">${escAttr(row.unit)}</td>
       <td class="col-sticky">${escAttr(row.code)}</td>
       <td class="col-sticky col-name"><span class="name-link" onclick="openTvvDetail('${row.code}')">${escAttr(row.name)}</span>${row.isNew?'<span class="new-badge">Mới</span>':''}${badges}</td>
+      <td><input class="cell-edit" type="text" style="width:76px;text-align:left" value="${escAttr(row.segment)}" placeholder="—" onchange="updateCommitSegment('${row.code}',this.value)"/></td>
       <td><input class="cell-edit" type="number" value="${row.monthTarget||''}" onchange="updateCommitMonth('${row.code}',this.value)"/></td>
       <td class="actual-cell ${statusClass(row.monthActual,row.monthTarget)}">${fmt(row.monthActual)}
         <div class="breakdown"><span class="confirmed">${fmt(row.monthConfirmed)} chắc</span> · <span class="potential">${fmt(row.monthPotential)} TN</span></div>
@@ -1089,6 +1105,7 @@ function openAddTvvModal(){
   document.getElementById('atv-unit').value='';
   document.getElementById('atv-code').value='';
   document.getElementById('atv-name').value='';
+  document.getElementById('atv-segment').value='';
   document.getElementById('atv-month').value='';
   const weeks = currentWeeks();
   document.getElementById('atv-weeks').innerHTML = weeks.map((w,wi)=>`
@@ -1113,6 +1130,7 @@ function saveAddTvv(){
   manmark.commits[code] = {
     unit: document.getElementById('atv-unit').value.trim(),
     name: document.getElementById('atv-name').value.trim(),
+    segment: document.getElementById('atv-segment').value.trim(),
     monthTarget: num(document.getElementById('atv-month').value),
     weekly,
   };
@@ -1135,6 +1153,14 @@ function deleteRow(code){
 function requireLogin(){ if(!currentUser){ openLoginModal(); return false; } return true; }
 
 // ── Inline edits ──
+function updateCommitSegment(code,val){
+  manmark.commits = manmark.commits||{};
+  if(!manmark.commits[code]) manmark.commits[code]={unit:'',name:findPersonByCode(code)?.name||'',monthTarget:0,segment:'',weekly:(manmark.weeks||[]).map(()=>({fyp:0,hs:0}))};
+  manmark.commits[code].segment = String(val||'').trim();
+  saveManmark();
+  renderHeader(); // để cập nhật lại danh sách dropdown filter Segment nếu vừa có giá trị mới
+  renderBody();
+}
 function updateCommitMonth(code,val){
   manmark.commits = manmark.commits||{};
   if(!manmark.commits[code]) manmark.commits[code]={unit:'',name:findPersonByCode(code)?.name||'',monthTarget:0,weekly:(manmark.weeks||[]).map(()=>({fyp:0,hs:0}))};
@@ -1162,11 +1188,11 @@ function updateNote(code,wi,val){
 function exportExcel(){
   const weeks = currentWeeks();
   const rows = applyFiltersSort(buildRows());
-  const header = ['STT','Unit','Mã TVV','Tên TVV','Cam kết tháng','Thực đạt tháng'];
+  const header = ['STT','Unit','Mã TVV','Tên TVV','AG Segment','Cam kết tháng','Thực đạt tháng'];
   weeks.forEach(w=>header.push(`${w.label} CK FYP`,`${w.label} TĐ FYP`,`${w.label} CK HS`,`${w.label} TĐ HS`,`${w.label} Ghi chú`));
   const aoa=[header];
   rows.forEach((row,i)=>{
-    const r=[i+1,row.unit,row.code,row.name,row.monthTarget,row.monthActual];
+    const r=[i+1,row.unit,row.code,row.name,row.segment,row.monthTarget,row.monthActual];
     row.weeks.forEach(wd=>r.push(wd.ckfyp,wd.tdfyp,wd.ckhs,wd.tdhs,wd.note));
     aoa.push(r);
   });
@@ -1185,7 +1211,7 @@ Object.assign(window, {
   openWeekConfig, closeWeekConfig, addWeekRow, resetWeekDefault, saveWeekConfig,
   openUploadModal, closeUploadModal, parseUploadedFile,
   closeMapModal, confirmMapping,
-  updateCommitMonth, updateCommitWeek, updateNote,
+  updateCommitMonth, updateCommitWeek, updateNote, updateCommitSegment,
   exportExcel, toggleSort, onFilterInput,
   openAddTvvModal, closeAddTvvModal, saveAddTvv, deleteRow,
   openTvvDetail, closeDetailModal,
