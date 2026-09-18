@@ -131,13 +131,15 @@
       <button class="btn ghost" onclick="logoutApp()">Logout</button>
     </div>
     <button id="loginBtn" class="btn ghost" onclick="openLoginModal()" style="display:none">🔒 Đăng nhập</button>
-    <label class="sub" style="color:#fff;opacity:.85">Ngày dữ liệu:
-      <input type="date" id="dataDate">
+    <label class="sub" style="color:#fff;opacity:.85">Ngày xem:
+      <select id="viewDateSelect" style="border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.1);color:#fff;padding:6px 8px;border-radius:7px;font-size:12.5px"></select>
     </label>
-    <button class="btn" onclick="document.getElementById('fileInput').click()">⇪ Tải file Excel</button>
-    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <label class="sub" style="color:#fff;opacity:.85">So sánh với:
+      <select id="priorDateSelect" style="border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.1);color:#fff;padding:6px 8px;border-radius:7px;font-size:12.5px"></select>
+    </label>
+    <button class="btn ghost" onclick="syncFromDailySales()">🔄 Đồng bộ lại</button>
     <button class="btn ghost" onclick="exportCSV()">Xuất CSV</button>
-    <button class="btn danger" onclick="resetAll()">Xóa dữ liệu</button>
+    <button class="btn danger" onclick="resetAll()">Xóa đánh dấu/trạng thái</button>
   </div>
 </header>
 
@@ -160,8 +162,8 @@
   </div>
 </div>
 
-<div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
-  Kéo thả file Excel vào đây, hoặc bấm để chọn file — <strong>upload mỗi ngày</strong> để dashboard tự so sánh và đánh dấu hồ sơ mới / hồ sơ đã biến mất so với lần trước.
+<div class="dropzone" id="dropzone" style="cursor:default">
+  📡 Dữ liệu được <strong>đồng bộ tự động</strong> từ tab <strong>TVV Hàng Ngày</strong> (sheet Pending trong file Daily Sales bạn upload mỗi ngày ở đó) — không cần tải file riêng ở đây nữa. Trạng thái xử lý (IF/PO/WD...) và lịch sử "đã biến mất" vẫn được lưu riêng tại đây.
 </div>
 
 <main>
@@ -240,7 +242,7 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getFirestore, doc, setDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
 const firebaseConfig = {
@@ -270,35 +272,24 @@ async function doLogin(){
 async function logoutApp(){ await signOut(auth); }
 function requireLogin(){ if(!currentUser){ openLoginModal(); return false; } return true; }
 
-const LS_SNAP = 'pcd_snapshots';   // { 'YYYY-MM-DD': [case,...] }
-const LS_STATUS = 'pcd_statuses';  // { proposalNum: 'IF'|'PO'|... }
-const LS_GONE = 'pcd_gone';        // { proposalNum: {...caseData, resolvedDate} }
-
-let snapshots = {};
-let statuses = {};
-let goneMap = {};
-let lastDateVal = '';
-let priorDateVal = '';
-
-function loadJSON(key, fallback){ return fallback; }
-function saveJSON(key, val){
-  if(key===LS_SNAP) snapshots = val;
-  else if(key===LS_STATUS) statuses = val;
-  else if(key===LS_GONE) goneMap = val;
-  else if(key==='pcd_lastDate') lastDateVal = val;
-  else if(key==='pcd_priorDate') priorDateVal = val;
-  scheduleSave();
-}
+// pending_cases/main giờ CHỈ lưu phần "giá trị gia tăng" của tab này: trạng thái xử lý
+// từng hồ sơ + lịch sử hồ sơ đã biến mất. Dữ liệu hồ sơ gốc lấy trực tiếp từ daily_sales_tvv.
+let statuses = {};   // { proposalNum: 'IF'|'PO'|'WD'|'CFI'|'PS' }
+let goneMap = {};    // { proposalNum: {...caseData, resolvedDate} }
+let pendingHistory = {}; // { 'YYYY-MM-DD': [pendingRow,...] } — toàn bộ lịch sử từ daily_sales_tvv
+let allDates = [];       // ngày có dữ liệu, tăng dần
+let viewDateVal = '';    // ngày đang xem (mặc định = mới nhất)
+let priorDateVal = '';   // ngày so sánh (mặc định = ngày trước đó)
 
 let saveTimer = null;
-function scheduleSave(){
+function saveAnnotations(){
   clearTimeout(saveTimer);
   const ind = document.getElementById('saveIndicator');
   if(ind){ ind.textContent = '⏳ Đang lưu...'; }
   saveTimer = setTimeout(async ()=>{
     try{
       await setDoc(doc(db,'pending_cases','main'), {
-        snapshots, statuses, goneMap, lastDate: lastDateVal, priorDate: priorDateVal,
+        statuses, goneMap,
         updatedAt: new Date().toISOString(), updatedBy: currentUser?.email || 'unknown',
       });
       if(ind){ ind.textContent = '✓ Đã lưu'; setTimeout(()=>{ if(ind.textContent==='✓ Đã lưu') ind.textContent=''; }, 2000); }
@@ -310,14 +301,75 @@ function loadFromFirestore(){
   if(unsubPending) unsubPending();
   unsubPending = onSnapshot(doc(db,'pending_cases','main'), snap=>{
     const d = snap.exists() ? snap.data() : {};
-    snapshots = d.snapshots || {};
     statuses = d.statuses || {};
     goneMap = d.goneMap || {};
-    lastDateVal = d.lastDate || '';
-    priorDateVal = d.priorDate || '';
     render();
   }, err=>{ console.error('pending_cases read error (đã đăng nhập chưa?):', err); });
+  syncFromDailySales();
 }
+
+// ---------- Đồng bộ dữ liệu hồ sơ từ collection daily_sales_tvv (nguồn: sheet Pending, tab TVV Hàng Ngày) ----------
+function mapCase(c){
+  const detail = (c.requirements||[]).map(r=>`${r.name}: ${r.detail}`).join(' | ');
+  return {
+    key: String(c.proposalNum), agCode: c.agCode, agName: c.agName, unitCode: c.unit,
+    proposalNum: c.proposalNum, proposalDate: c.proposalDate, productName: c.product,
+    basicProductCode: '', ape: c.ape, poName: c.poName, description: c.description,
+    classify: c.classify, detail
+  };
+}
+
+async function syncFromDailySales(){
+  const ind = document.getElementById('saveIndicator');
+  try{
+    const snaps = await getDocs(collection(db,'daily_sales_tvv'));
+    const byDate = {};
+    snaps.forEach(s=>{ byDate[s.id] = (s.data()||{}).pendingRows || []; });
+    allDates = Object.keys(byDate).sort();
+    pendingHistory = byDate;
+    computeGoneFromHistory();
+    populateDateSelectors();
+    render();
+  }catch(e){
+    console.error('daily_sales_tvv read error (đã đăng nhập chưa / đã có rule Firestore chưa):', e);
+    if(ind) ind.textContent = '⚠ Không đọc được daily_sales_tvv';
+  }
+}
+
+// Quét toàn bộ lịch sử để phát hiện hồ sơ đã biến mất (đã xử lý xong / rút) — chỉ THÊM vào goneMap
+// đã lưu, không tự xoá; hồ sơ tái xuất hiện ở ngày mới nhất thì được gỡ khỏi goneMap.
+function computeGoneFromHistory(){
+  if(allDates.length<2) return;
+  let changed = false;
+  for(let i=1;i<allDates.length;i++){
+    const prevRows = pendingHistory[allDates[i-1]]||[];
+    const curKeys = new Set((pendingHistory[allDates[i]]||[]).map(c=>String(c.proposalNum)));
+    prevRows.forEach(c=>{
+      const key = String(c.proposalNum);
+      if(!curKeys.has(key) && !goneMap[key]){
+        goneMap[key] = Object.assign({}, mapCase(c), { resolvedDate: allDates[i] });
+        changed = true;
+      }
+    });
+  }
+  const latestKeys = new Set((pendingHistory[allDates[allDates.length-1]]||[]).map(c=>String(c.proposalNum)));
+  Object.keys(goneMap).forEach(k=>{ if(latestKeys.has(k)){ delete goneMap[k]; changed = true; } });
+  if(changed) saveAnnotations();
+}
+
+function populateDateSelectors(){
+  const viewSel = document.getElementById('viewDateSelect'), priorSel = document.getElementById('priorDateSelect');
+  const keepView = viewDateVal, keepPrior = priorDateVal;
+  viewSel.innerHTML = allDates.map(d=>`<option value="${d}">${fmtDateVN(d)}</option>`).join('');
+  priorSel.innerHTML = `<option value="">(không so sánh)</option>` + allDates.map(d=>`<option value="${d}">${fmtDateVN(d)}</option>`).join('');
+  viewDateVal = allDates.includes(keepView) ? keepView : (allDates[allDates.length-1] || '');
+  viewSel.value = viewDateVal;
+  const idx = allDates.indexOf(viewDateVal);
+  priorDateVal = allDates.includes(keepPrior) ? keepPrior : (idx>0 ? allDates[idx-1] : '');
+  priorSel.value = priorDateVal;
+}
+document.getElementById('viewDateSelect').addEventListener('change', e=>{ viewDateVal = e.target.value; render(); });
+document.getElementById('priorDateSelect').addEventListener('change', e=>{ priorDateVal = e.target.value; render(); });
 
 onAuthStateChanged(auth, user=>{
   currentUser = user;
@@ -328,13 +380,10 @@ onAuthStateChanged(auth, user=>{
     loadFromFirestore();
   } else {
     userBox.style.display='none'; loginBtn.style.display='block';
-    snapshots={}; statuses={}; goneMap={}; lastDateVal=''; priorDateVal='';
+    statuses={}; goneMap={}; pendingHistory={}; allDates=[]; viewDateVal=''; priorDateVal='';
     render();
   }
 });
-
-const dateInput = document.getElementById('dataDate');
-dateInput.value = todayStr();
 
 function todayStr(){
   const d = new Date();
@@ -346,118 +395,11 @@ function fmtDateVN(iso){
   return `${d}/${m}/${y}`;
 }
 function fmtProposalDate(v){
-  // stored as int YYYYMMDD
-  const s = String(v||'');
-  if(s.length!==8) return s;
-  return `${s.slice(6,8)}/${s.slice(4,6)}/${s.slice(0,4)}`;
-}
-
-// ---------- File parsing ----------
-const fileInput = document.getElementById('fileInput');
-const dropzone = document.getElementById('dropzone');
-fileInput.addEventListener('change', e=>{ if(e.target.files[0]) handleFile(e.target.files[0]); });
-dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
-dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
-dropzone.addEventListener('drop', e=>{
-  e.preventDefault(); dropzone.classList.remove('drag');
-  if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-});
-
-function handleFile(file){
-  if(!requireLogin()) return;
-  const reader = new FileReader();
-  reader.onload = ev=>{
-    try{
-      const wb = XLSX.read(new Uint8Array(ev.target.result), {type:'array'});
-      const sheetName = wb.SheetNames.includes('Export') ? 'Export' : wb.SheetNames[0];
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null});
-      const cases = parseRows(rows);
-      if(cases.length===0){ alert('Không đọc được dòng dữ liệu nào từ file. Kiểm tra lại định dạng.'); return; }
-      importSnapshot(cases, dateInput.value || todayStr());
-    }catch(err){
-      alert('Lỗi khi đọc file: '+err.message);
-    }
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-function parseRows(rows){
-  // find header row: contains ProposalNum and AGCode
-  let headerIdx = -1, headerMap = {};
-  for(let i=0;i<rows.length;i++){
-    const row = rows[i] || [];
-    const norm = row.map(c=> (c==null? '' : String(c).trim()));
-    if(norm.includes('ProposalNum') && norm.includes('AGCode')){
-      headerIdx = i;
-      norm.forEach((name, idx)=>{ if(name && headerMap[name]===undefined) headerMap[name]=idx; });
-      break;
-    }
-  }
-  if(headerIdx===-1) return [];
-  const get = (row, name)=> headerMap[name]!==undefined ? row[headerMap[name]] : null;
-  const cases = [];
-  for(let i=headerIdx+1;i<rows.length;i++){
-    const row = rows[i];
-    if(!row || row.length===0) continue;
-    const first = row[0];
-    if(first==null || first==='' ) continue;
-    if(String(first).trim()==='Total') break;
-    if(String(first).toLowerCase().startsWith('applied filters')) break;
-    const proposalNum = get(row,'ProposalNum');
-    if(proposalNum==null || proposalNum==='') continue;
-    const pendingReasons = ['Compliance','Internal Pending','Medical Check','Medical Info','Personal Info','IndependentCall','Voice Recording']
-      .map(k=>({k, v:get(row,k)}))
-      .filter(x=>x.v!=null && String(x.v).trim()!=='')
-      .map(x=>`${x.k}: ${x.v}`);
-    cases.push({
-      key: String(proposalNum),
-      agCode: get(row,'AGCode'),
-      agName: get(row,'AGName'),
-      officeCode: get(row,'OfficeCode'),
-      policyNum: get(row,'PolicyNum'),
-      proposalNum: proposalNum,
-      proposalDate: get(row,'ProposalDate'),
-      basicProductCode: get(row,'BasicProductCode'),
-      productName: get(row,'ProductNameVN'),
-      ape: get(row,'APE (mil)'),
-      unitCode: get(row,'UnitCode'),
-      poName: get(row,'POName'),
-      description: get(row,'Description'),
-      classify: get(row,'Classify'),
-      detail: pendingReasons.join(' | ')
-    });
-  }
-  return cases;
-}
-
-// ---------- Snapshot import + diff ----------
-function importSnapshot(cases, dateStr){
-  const byKey = {};
-  cases.forEach(c=> byKey[c.key]=c);
-  snapshots[dateStr] = cases;
-  saveJSON(LS_SNAP, snapshots);
-
-  // find previous snapshot date (most recent date strictly before dateStr)
-  const priorDates = Object.keys(snapshots).filter(d=> d < dateStr).sort();
-  const priorDate = priorDates.length ? priorDates[priorDates.length-1] : null;
-  const priorCases = priorDate ? snapshots[priorDate] : [];
-  const priorByKey = {}; priorCases.forEach(c=> priorByKey[c.key]=c);
-
-  // cases that disappeared: in prior, not in current -> add/update goneMap
-  priorCases.forEach(c=>{
-    if(!byKey[c.key]){
-      if(!goneMap[c.key]){
-        goneMap[c.key] = Object.assign({}, c, {resolvedDate: dateStr});
-      }
-    }
-  });
-  // cases that reappeared: if in current and also in goneMap, remove from goneMap
-  cases.forEach(c=>{ if(goneMap[c.key]) delete goneMap[c.key]; });
-  saveJSON(LS_GONE, goneMap);
-
-  saveJSON('pcd_lastDate', dateStr);
-  saveJSON('pcd_priorDate', priorDate || '');
-  render();
+  if(!v) return '';
+  const s = String(v);
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){ const [y,m,d]=s.split('-'); return `${d}/${m}/${y}`; }
+  if(s.length===8) return `${s.slice(6,8)}/${s.slice(4,6)}/${s.slice(0,4)}`; // tương thích ngược, phòng khi còn dữ liệu cũ
+  return s;
 }
 
 function statusSelect(key){
@@ -470,13 +412,13 @@ function statusSelect(key){
 function setStatus(key, val){
   if(!requireLogin()) return;
   if(val) statuses[key]=val; else delete statuses[key];
-  saveJSON(LS_STATUS, statuses);
+  saveAnnotations();
 }
 
 function dismissGone(key){
   if(!requireLogin()) return;
   delete goneMap[key];
-  saveJSON(LS_GONE, goneMap);
+  saveAnnotations();
   render();
 }
 
@@ -484,14 +426,14 @@ function toggleDetail(el){ el.classList.toggle('open'); }
 
 // ---------- Render ----------
 function render(){
-  const lastDate = lastDateVal || Object.keys(snapshots).sort().pop() || null;
+  const viewDate = viewDateVal || allDates[allDates.length-1] || null;
   const priorDate = priorDateVal || '';
-  const current = lastDate ? (snapshots[lastDate]||[]) : [];
-  const priorKeys = new Set((priorDate ? snapshots[priorDate] : [] || []).map(c=>c.key));
+  const current = viewDate ? (pendingHistory[viewDate]||[]).map(mapCase) : [];
+  const priorKeys = new Set((priorDate ? (pendingHistory[priorDate]||[]) : []).map(c=>String(c.proposalNum)));
 
-  document.getElementById('lastUpdated').textContent = lastDate
-    ? `Dữ liệu mới nhất: ${fmtDateVN(lastDate)}${priorDate? ' · so với '+fmtDateVN(priorDate) : ' · chưa có dữ liệu trước để so sánh'}`
-    : 'Chưa có dữ liệu';
+  document.getElementById('lastUpdated').textContent = viewDate
+    ? `Đang xem: ${fmtDateVN(viewDate)}${priorDate? ' · so với '+fmtDateVN(priorDate) : ' · chưa chọn ngày so sánh'}`
+    : 'Chưa có dữ liệu — hãy upload file Daily Sales ở tab TVV Hàng Ngày';
 
   const search = document.getElementById('search').value.trim().toLowerCase();
   const fClassify = document.getElementById('filterClassify').value;
@@ -575,16 +517,15 @@ function render(){
   `;
 
   // history line
-  const allDates = Object.keys(snapshots).sort();
   document.getElementById('historyLine').innerHTML = allDates.length
-    ? `Lịch sử upload: ${allDates.map(d=> d===lastDate? `<b>${fmtDateVN(d)}</b>` : fmtDateVN(d)).join('  ·  ')}`
+    ? `Lịch sử dữ liệu (từ TVV Hàng Ngày): ${allDates.map(d=> d===viewDate? `<b>${fmtDateVN(d)}</b>` : fmtDateVN(d)).join('  ·  ')}`
     : '';
 }
 
 function exportCSV(){
-  const lastDate = lastDateVal;
-  if(!lastDate){ alert('Chưa có dữ liệu.'); return; }
-  const rows = snapshots[lastDate]||[];
+  const viewDate = viewDateVal || allDates[allDates.length-1] || null;
+  if(!viewDate){ alert('Chưa có dữ liệu.'); return; }
+  const rows = (pendingHistory[viewDate]||[]).map(mapCase);
   const header = ['AGCode','AGName','ProposalNum','PolicyNum','ProposalDate','ProductName','APE','UnitCode','POName','Description','Classify','Status'];
   const lines = [header.join(',')].concat(rows.map(c=> [
     c.agCode,`"${(c.agName||'').replace(/"/g,'""')}"`,c.proposalNum,c.policyNum,fmtProposalDate(c.proposalDate),
@@ -594,21 +535,21 @@ function exportCSV(){
   const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `pending-cases-${lastDate}.csv`;
+  a.download = `pending-cases-${viewDate}.csv`;
   a.click();
 }
 
 function resetAll(){
   if(!requireLogin()) return;
-  if(!confirm('Xóa toàn bộ dữ liệu đã lưu (tất cả lịch sử, trạng thái)? Không thể hoàn tác.')) return;
-  snapshots={}; statuses={}; goneMap={}; lastDateVal=''; priorDateVal='';
-  scheduleSave();
+  if(!confirm('Xóa toàn bộ trạng thái đã đánh dấu (IF/PO/WD...) và lịch sử "đã biến mất"? Dữ liệu hồ sơ gốc ở TVV Hàng Ngày không bị ảnh hưởng. Không thể hoàn tác.')) return;
+  statuses={}; goneMap={};
+  saveAnnotations();
   render();
 }
 
 Object.assign(window, {
   openLoginModal, closeLoginModal, doLogin, logoutApp,
-  exportCSV, resetAll, render, setStatus, toggleDetail, dismissGone,
+  exportCSV, resetAll, render, setStatus, toggleDetail, dismissGone, syncFromDailySales,
 });
 render();
 </script>

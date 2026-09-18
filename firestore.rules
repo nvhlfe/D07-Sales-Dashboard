@@ -35,6 +35,13 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
+    // TVV Hàng Ngày — snapshot lũy kế theo ngày từ file Daily Sales (Proposal/Agent/Leader/Pending/Pipeline)
+    // Đây cũng là nguồn "chính thức" mà ManMark có thể đọc trực tiếp (tuỳ chọn "Nguồn thực đạt")
+    match /daily_sales_tvv/{docId} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null;
+    }
+
     // Mặc định: từ chối tất cả những gì không khớp rule ở trên
     match /{document=**} {
       allow read, write: if false;

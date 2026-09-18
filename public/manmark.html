@@ -114,6 +114,14 @@
     <select id="yearSelect" class="compact"></select>
   </div>
   <div class="tool-sep"></div>
+  <div class="tool-group">
+    <span class="tool-label">Nguồn thực đạt</span>
+    <select id="actualSourceSelect" class="compact">
+      <option value="salesreport">Sales Report (nhập tay)</option>
+      <option value="official">TVV Hàng Ngày (chính thức)</option>
+    </select>
+  </div>
+  <div class="tool-sep"></div>
   <button class="btn btn-blue" onclick="openWeekConfig()">📅 Cấu hình tuần</button>
   <button class="btn btn-purple" onclick="openUploadModal()">📥 Upload DATA tháng</button>
   <button class="btn btn-green" onclick="openAddTvvModal()">＋ Thêm TVV</button>
@@ -250,7 +258,7 @@
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getFirestore, doc, setDoc, getDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, query, orderBy, startAt, endAt, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 
 const firebaseConfig = {
@@ -276,9 +284,13 @@ let pendingDoc = { snapshots:{}, statuses:{}, goneMap:{}, lastDate:'' };
 let yearlyHistory = {}; // { [month(1-12)]: { reportData:[...], commits:{...} } } cho năm đang chọn
 let yearlyHistoryYear = null;
 let detailChartWeekly = null, detailChartMonthly = null;
+let actualSource = 'salesreport'; // 'salesreport' (nhập tay, cũ) | 'official' (daily_sales_tvv, chính thức)
+let officialMonthDates = [];      // ['2026-09-01', '2026-09-02', ...] đã sắp xếp tăng dần, trong tháng đang xem
+let officialMonthAgents = {};     // { [date]: { [agCode]: {fyp,fyc,caseNet,ipNet,caseSub,ipSub} } }
+let officialLatestPendingPipeline = { pendingRows:[], pipelineRows:[] }; // hồ sơ thô, ngày mới nhất trong tháng
 
 function defaultManmark(){
-  return { weeks: defaultWeeks(currentMonth()), commits: {}, notes: {}, excluded: {}, updatedAt:null, updatedBy:null };
+  return { weeks: defaultWeeks(currentMonth()), commits: {}, notes: {}, excluded: {}, dataSource:'salesreport', updatedAt:null, updatedBy:null };
 }
 let sortState = { col: 'name', dir: 'asc' };
 let filterState = {};
@@ -315,6 +327,14 @@ function initSelectors(){
 }
 monthSelect.addEventListener('change', loadAll);
 yearSelect.addEventListener('change', loadAll);
+const actualSourceSelect = document.getElementById('actualSourceSelect');
+actualSourceSelect.addEventListener('change', ()=>{
+  actualSource = actualSourceSelect.value;
+  manmark.dataSource = actualSource;
+  saveManmark();
+  if(actualSource==='official' && !officialMonthDates.length) loadOfficialMonthData();
+  else renderAll();
+});
 
 // ── Auth ──
 function openLoginModal(){ document.getElementById('loginModal').style.display='flex'; }
@@ -359,6 +379,9 @@ function loadAll(){
   unsubManmark = onSnapshot(doc(db,'manmark',mmKey()), snap=>{
     manmark = snap.exists() ? Object.assign(defaultManmark(), snap.data()) : defaultManmark();
     if(!manmark.weeks || !manmark.weeks.length) manmark.weeks = defaultWeeks(m);
+    actualSource = manmark.dataSource==='official' ? 'official' : 'salesreport';
+    actualSourceSelect.value = actualSource;
+    if(actualSource==='official' && !officialMonthDates.length) loadOfficialMonthData();
     renderAll();
   }, err=>{ console.error('manmark read error (có thể chưa thêm rule cho collection manmark):', err); manmark=defaultManmark(); renderAll(); });
   unsubPending = onSnapshot(doc(db,'pending_cases','main'), snap=>{
@@ -366,6 +389,7 @@ function loadAll(){
     renderAll();
   }, err=>{ console.error('pending_cases read error:', err); pendingDoc={snapshots:{},statuses:{},goneMap:{},lastDate:''}; renderAll(); });
   loadYearlyHistory();
+  loadOfficialMonthData();
 }
 
 // ── Lịch sử cả năm (cho xu hướng theo tháng + cảnh báo giảm liên tiếp) ──
@@ -390,6 +414,76 @@ async function loadYearlyHistory(){
   results.forEach(r=>{ yearlyHistory[r.m] = { reportData:r.reportData, commits:r.commits }; });
   conversionIndexCache = null; conversionIndexKey = null;
   renderAll();
+}
+
+// ── Dữ liệu "chính thức" từ TVV Hàng Ngày (collection daily_sales_tvv, snapshot lũy kế theo ngày) ──
+async function loadOfficialMonthData(){
+  const y = currentYear(), m = currentMonth();
+  const pad = n=>String(n).padStart(2,'0');
+  const start = `${y}-${pad(m)}-01`, end = `${y}-${pad(m)}-31`;
+  try{
+    const q = query(collection(db,'daily_sales_tvv'), orderBy('__name__'), startAt(start), endAt(end));
+    const snaps = await getDocs(q);
+    officialMonthDates = []; officialMonthAgents = {};
+    snaps.forEach(s=>{
+      officialMonthDates.push(s.id);
+      officialMonthAgents[s.id] = (s.data()||{}).agents || {};
+    });
+    officialMonthDates.sort();
+    // Pending/Pipeline "tiềm năng" — giữ nguyên hồ sơ thô của ngày mới nhất trong tháng để còn lọc theo
+    // trạng thái đã đánh dấu thủ công (WD...) ở tab Pending Cases khi tính giá trị.
+    officialLatestPendingPipeline = { pendingRows:[], pipelineRows:[] };
+    if(officialMonthDates.length){
+      const latestDate = officialMonthDates[officialMonthDates.length-1];
+      const latestSnap = snaps.docs.find(d=>d.id===latestDate);
+      const latestData = latestSnap ? latestSnap.data() : {};
+      officialLatestPendingPipeline.pendingRows = latestData.pendingRows || [];
+      officialLatestPendingPipeline.pipelineRows = latestData.pipelineRows || [];
+    }
+  }catch(e){
+    console.error('daily_sales_tvv read error (kiểm tra rule Firestore cho collection này):', e);
+    officialMonthDates = []; officialMonthAgents = {}; officialLatestPendingPipeline = { pendingRows:[], pipelineRows:[] };
+  }
+  renderAll();
+}
+
+// Trả về mảng theo tuần: [{fyp,fyc,caseNet,ipNet}] — là mức TĂNG (delta) trong tuần đó,
+// suy ra từ số lũy kế trong tháng (mỗi ngày là tổng dồn từ đầu tháng) của daily_sales_tvv.
+function officialActualsForCode(code, weeks){
+  const res = weeks.map(()=>({fyp:0, fyc:0, caseNet:0, ipNet:0}));
+  let prev = { fyp:0, fyc:0, caseNet:0, ipNet:0 }; // trước ngày 1 trong tháng = 0 (số lũy kế reset mỗi tháng)
+  officialMonthDates.forEach(dateStr=>{
+    const day = parseInt(dateStr.slice(8,10));
+    const a = officialMonthAgents[dateStr]?.[code];
+    const cur = a ? { fyp:Number(a.fyp||0), fyc:Number(a.fyc||0), caseNet:Number(a.caseNet||0), ipNet:Number(a.ipNet||0) } : prev;
+    const wIdx = weeks.findIndex(w=>day>=w.start && day<=w.end);
+    if(wIdx!==-1){
+      res[wIdx].fyp += cur.fyp - prev.fyp;
+      res[wIdx].fyc += cur.fyc - prev.fyc;
+      res[wIdx].caseNet += cur.caseNet - prev.caseNet;
+      res[wIdx].ipNet += cur.ipNet - prev.ipNet;
+    }
+    prev = cur;
+  });
+  return res;
+}
+
+// Số lũy kế mới nhất trong tháng (chính là tổng tháng, vì đã là số dồn tháng) cho 1 mã TVV
+function officialLatestForCode(code){
+  for(let i=officialMonthDates.length-1;i>=0;i--){
+    const a = officialMonthAgents[officialMonthDates[i]]?.[code];
+    if(a) return { fyp:Number(a.fyp||0), fyc:Number(a.fyc||0), caseNet:Number(a.caseNet||0), ipNet:Number(a.ipNet||0) };
+  }
+  return { fyp:0, fyc:0, caseNet:0, ipNet:0 };
+}
+
+// Thông tin định danh (unit/tên/hạng) mới nhất từ daily_sales_tvv cho 1 mã TVV
+function officialAgentInfoForCode(code){
+  for(let i=officialMonthDates.length-1;i>=0;i--){
+    const a = officialMonthAgents[officialMonthDates[i]]?.[code];
+    if(a) return { unit:a.unit||'', agName:a.agName||'', agSeg:a.agSeg||'' };
+  }
+  return null;
 }
 
 function saveManmark(){
@@ -678,15 +772,22 @@ function actualsForPerson(person, weeks){
   return res;
 }
 
-// ── Giá trị hồ sơ đang Pending (từ tab Pending), theo AGCode ──
+// ── Giá trị hồ sơ đang Pending / Pipeline (tiềm năng), theo AGCode ──
+// Giá trị Pending/Pipeline giờ luôn lấy từ daily_sales_tvv (nguồn duy nhất sau khi hợp nhất với tab
+// Pending Cases — collection pending_cases chỉ còn giữ trạng thái xử lý (statuses) + lịch sử "đã biến mất" (goneMap),
+// không còn tự lưu danh sách hồ sơ nữa).
 function pendingValueByCode(code){
-  const snap = pendingDoc.snapshots?.[pendingDoc.lastDate];
-  if(!Array.isArray(snap)) return { value:0, count:0, cases:[] };
-  const gone = pendingDoc.goneMap || {};
   const statuses = pendingDoc.statuses || {};
-  const mine = snap.filter(c=>String(c.agCode||'').trim()===String(code).trim() && !gone[c.key] && statuses[c.key]!=='WD');
-  const value = mine.reduce((s,c)=>s+Number(c.ape||0),0);
-  return { value, count: mine.length, cases: mine };
+  const norm = r => ({ proposalNum:r.proposalNum, productName:r.product, ape:r.ape, proposalDate:r.proposalDate, agCode:r.agCode });
+  const pendingMine = officialLatestPendingPipeline.pendingRows
+    .filter(r=> String(r.agCode||'').trim()===String(code).trim() && statuses[String(r.proposalNum)]!=='WD')
+    .map(norm);
+  const pipelineMine = officialLatestPendingPipeline.pipelineRows
+    .filter(r=> String(r.agCode||'').trim()===String(code).trim())
+    .map(norm);
+  const pendApe = pendingMine.reduce((s,r)=>s+Number(r.ape||0),0);
+  const pipeApe = pipelineMine.reduce((s,r)=>s+Number(r.ape||0),0);
+  return { value: pendApe + pipeApe, count: pendingMine.length + pipelineMine.length, cases: pendingMine.concat(pipelineMine), pendingApe: pendApe, pipelineApe: pipeApe };
 }
 
 // ── Xu hướng theo tháng (từ yearlyHistory) — trả về mảng 12 tháng + moving avg 3 tháng + độ lệch chuẩn (z-score) ──
@@ -780,22 +881,36 @@ function buildRows(){
   const weeks = currentWeeks();
   const codes = new Set(Object.keys(manmark.commits||{}));
   (Array.isArray(reportData)?reportData:[]).forEach(p=>{ if(p && p.msdl) codes.add(String(p.msdl).trim()); });
+  if(actualSource==='official'){
+    officialMonthDates.forEach(d=>{ Object.keys(officialMonthAgents[d]||{}).forEach(c=>codes.add(String(c).trim())); });
+  }
   const excluded = manmark.excluded || {};
   const list = Array.from(codes).filter(c=>!excluded[c]);
   const todayDay = (currentMonth()===new Date().getMonth()+1 && currentYear()===new Date().getFullYear()) ? new Date().getDate() : 999;
   return list.map(code=>{
     const commit = manmark.commits?.[code];
     const person = findPersonByCode(code);
+    const officialLatestAgent = actualSource==='official' ? officialAgentInfoForCode(code) : null;
     const isNew = !commit;
-    const unit = commit?.unit || person?.group || '';
-    const segment = commit?.segment || '';
-    const name = commit?.name || person?.name || '(chưa rõ tên)';
+    const unit = commit?.unit || person?.group || officialLatestAgent?.unit || '';
+    const segment = commit?.segment || officialLatestAgent?.agSeg || '';
+    const name = commit?.name || person?.name || officialLatestAgent?.agName || '(chưa rõ tên)';
     const monthTarget = commit?.monthTarget || 0;
     const weekly = commit?.weekly || weeks.map(()=>({fyp:0,hs:0}));
-    const actuals = actualsForPerson(person, weeks);
-    const monthActual = actuals.reduce((s,a)=>s+a.fyp,0);
-    const monthConfirmed = actuals.reduce((s,a)=>s+a.confirmedFyp,0);
-    const monthPotential = actuals.reduce((s,a)=>s+a.potentialFyp,0);
+    let actuals, monthActual, monthConfirmed, monthPotential;
+    if(actualSource==='official'){
+      const offWeeks = officialActualsForCode(code, weeks);
+      const latest = officialLatestForCode(code);
+      actuals = offWeeks.map(w=>({ fyp:w.fyp, hs:w.caseNet, confirmedFyp:w.fyp, confirmedHs:w.caseNet, potentialFyp:0, potentialHs:0 }));
+      monthActual = latest.fyp;
+      monthConfirmed = latest.fyp; // FYP/Case Net chính thức = đã phát hành (chắc chắn)
+      monthPotential = 0; // phần "tiềm năng" lấy riêng từ Pending+Pipeline (pendingValueByCode) cho kịch bản dự báo
+    } else {
+      actuals = actualsForPerson(person, weeks);
+      monthActual = actuals.reduce((s,a)=>s+a.fyp,0);
+      monthConfirmed = actuals.reduce((s,a)=>s+a.confirmedFyp,0);
+      monthPotential = actuals.reduce((s,a)=>s+a.potentialFyp,0);
+    }
     const pending = pendingValueByCode(code);
     const conv = personalConversionRate(code, unit);
     const convertible = monthPotential + pending.value;
@@ -920,7 +1035,10 @@ function renderBody(){
   });
   tbody += `<td></td></tr>`;
 
-  document.getElementById('tableBody').innerHTML = tbody || `<tr><td colspan="99" style="padding:20px;color:#8896aa">Chưa có dữ liệu — hãy đăng nhập, upload DATA tháng, hoặc kiểm tra reports/${currentMonth()} đã có dữ liệu sales report chưa.</td></tr>`;
+  const emptyHint = actualSource==='official'
+    ? `hoặc kiểm tra collection daily_sales_tvv đã có dữ liệu tháng ${currentMonth()}/${currentYear()} chưa (upload từ tab TVV Hàng Ngày).`
+    : `hoặc kiểm tra reports/${currentYear()}-${currentMonth()} đã có dữ liệu sales report chưa.`;
+  document.getElementById('tableBody').innerHTML = tbody || `<tr><td colspan="99" style="padding:20px;color:#8896aa">Chưa có dữ liệu — hãy đăng nhập, upload DATA tháng, ${emptyHint}</td></tr>`;
 
   renderKpi(rows.length, totalMonthCommit, totalMonthActual, totalForecast);
 }
@@ -937,10 +1055,13 @@ function statusClass(actual, target){
 function renderKpi(count, commit, actual, forecast){
   const pct = commit ? Math.round(actual/commit*100) : 0;
   const fpct = commit ? Math.round(forecast/commit*100) : 0;
+  const srcBadge = actualSource==='official'
+    ? `<span style="font-size:10px;font-weight:700;color:#065f46;background:#d1fae5;border-radius:20px;padding:2px 8px;margin-left:6px;">CHÍNH THỨC</span>`
+    : `<span style="font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:20px;padding:2px 8px;margin-left:6px;">NHẬP TAY</span>`;
   document.getElementById('kpiBar').innerHTML = `
     <div class="kpi-chip"><div class="lbl">Tổng TVV</div><div class="val">${count}</div></div>
     <div class="kpi-chip"><div class="lbl">Cam kết tháng</div><div class="val">${fmt(commit)}</div></div>
-    <div class="kpi-chip"><div class="lbl">Thực đạt tháng</div><div class="val">${fmt(actual)}</div></div>
+    <div class="kpi-chip"><div class="lbl">Thực đạt tháng${srcBadge}</div><div class="val">${fmt(actual)}</div></div>
     <div class="kpi-chip"><div class="lbl">% Đạt</div><div class="val" style="color:${pct>=100?'#0f9d58':pct>=70?'#b45309':'#c0243c'}">${pct}%</div></div>
     <div class="kpi-chip"><div class="lbl">Dự báo tháng</div><div class="val" style="color:${fpct>=100?'#0f9d58':fpct>=70?'#b45309':'#c0243c'}">${fmt(Math.round(forecast))}</div></div>`;
 }
