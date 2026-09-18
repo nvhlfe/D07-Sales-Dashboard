@@ -10,6 +10,7 @@ import TVVTab from './components/TVVTab'
 import SalesReportTab from './components/SalesReportTab'
 import PendingTab from './components/PendingTab'
 import ManMarkTab from './components/ManMarkTab'
+import TvvDailyTab from './components/TvvDailyTab'
 
 // ── Firebase config — tự động kết nối cho tất cả users ──────
 const FIREBASE_CONFIG = {
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { id: 'sales',     label: 'Sales Report', icon: '📋' },
   { id: 'pending',   label: 'Pending',   icon: '⏳' },
   { id: 'manmark',   label: 'ManMark',   icon: '📆' },
+  { id: 'tvvdaily',  label: 'TVV Hàng Ngày', icon: '📈' },
 ]
 const TAB_TITLES = {
   dashboard: 'Dashboard Tổng Quan — GA D07 Quận 7',
@@ -39,6 +41,7 @@ const TAB_TITLES = {
   sales: 'D07 — Theo Dõi Doanh Số 2026',
   pending: 'Theo Dõi Hồ Sơ Đang Chờ',
   manmark: 'ManMark — Cam Kết Tuần',
+  tvvdaily: 'Theo Dõi Kinh Doanh TVV Hàng Ngày',
 }
 
 const EMPTY_DATA = {
@@ -607,6 +610,7 @@ export default function App() {
             {activeTab === 'sales'     && <SalesReportTab />}
             {activeTab === 'pending'   && <PendingTab />}
             {activeTab === 'manmark'   && <ManMarkTab />}
+            {activeTab === 'tvvdaily'  && <TvvDailyTab />}
           </ErrorBoundary>
         )}
 

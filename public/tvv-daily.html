@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Theo Dõi Kinh Doanh TVV Hàng Ngày - GA D07</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --blue:#1d4ed8; --blue-light:#eff6ff; --green:#16a34a; --red:#dc2626;
+    --gray:#64748b; --border:#e2e8f0; --bg:#f8fafc; --card:#ffffff;
+    --amber:#d97706; --purple:#7c3aed;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:#0f172a;}
+  #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;}
+  .loginBox{background:var(--card);padding:32px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.08);width:320px;}
+  .loginBox h1{font-size:18px;margin:0 0 20px;color:var(--blue);}
+  .loginBox input{width:100%;padding:10px;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;font-size:14px;}
+  .loginBox button{width:100%;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-weight:600;}
+  .loginBox button:hover{background:#1e40af;}
+  #loginError{color:var(--red);font-size:13px;margin-top:8px;min-height:16px;}
+  #appScreen{display:none;}
+  header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50;}
+  header h1{font-size:18px;margin:0;color:var(--blue);}
+  header .userinfo{font-size:13px;color:var(--gray);display:flex;align-items:center;gap:12px;}
+  header button{background:none;border:1px solid var(--border);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px;}
+  main{max-width:1500px;margin:0 auto;padding:20px 24px 60px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:18px;}
+  .card h2{font-size:15px;margin:0 0 14px;color:#1e293b;}
+  .row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;}
+  .field{display:flex;flex-direction:column;gap:4px;}
+  .field label{font-size:12px;color:var(--gray);font-weight:600;}
+  .field input,.field select{padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;min-width:140px;}
+  .ddown{position:relative;min-width:170px;}
+  .ddown-btn{width:100%;text-align:left;padding:8px 30px 8px 10px;border:1px solid var(--border);border-radius:7px;background:#fff;font-size:13px;cursor:pointer;position:relative;color:#0f172a;}
+  .ddown-btn::after{content:"▾";position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:11px;}
+  .ddown-panel{display:none;position:absolute;top:calc(100% + 4px);left:0;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:6px;max-height:260px;overflow:auto;z-index:80;min-width:210px;}
+  .ddown-panel.open{display:block;}
+  .ddown-item{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;font-size:13px;cursor:pointer;white-space:nowrap;}
+  .ddown-item:hover{background:#f1f5f9;}
+  .ddown-item input{margin:0;}
+  .ddown-all{border-bottom:1px solid var(--border);margin-bottom:4px;padding-bottom:8px;}
+  .btn{background:var(--blue);color:#fff;border:none;padding:9px 16px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;}
+  .btn:hover{background:#1e40af;}
+  .btn.secondary{background:#fff;color:var(--blue);border:1px solid var(--blue);}
+  .btn.secondary:hover{background:var(--blue-light);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  #uploadStatus{font-size:13px;margin-top:8px;white-space:pre-line;}
+  .tabs{display:flex;gap:4px;border-bottom:2px solid var(--border);margin-bottom:16px;flex-wrap:wrap;}
+  .tabbtn{padding:10px 18px;background:none;border:none;font-size:14px;cursor:pointer;color:var(--gray);border-bottom:3px solid transparent;margin-bottom:-2px;font-weight:600;}
+  .tabbtn.active{color:var(--blue);border-bottom-color:var(--blue);}
+  .tabpanel{display:none;}
+  .tabpanel.active{display:block;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{padding:8px 10px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;}
+  th:nth-child(1),th:nth-child(2),th:nth-child(3),th:nth-child(4),
+  td:nth-child(1),td:nth-child(2),td:nth-child(3),td:nth-child(4){text-align:left;white-space:normal;}
+  th{background:#f1f5f9;color:#334155;cursor:pointer;user-select:none;position:sticky;top:0;}
+  th:hover{background:#e2e8f0;}
+  th.col-case{background:#dbeafe;color:#1e40af;}
+  th.col-case:hover{background:#bfdbfe;}
+  th.col-ip{background:#ede9fe;color:#5b21b6;}
+  th.col-ip:hover{background:#ddd6fe;}
+  th.col-fyp{background:#d1fae5;color:#065f46;}
+  th.col-fyp:hover{background:#a7f3d0;}
+  th.col-count{background:#fef3c7;color:#92400e;}
+  th.col-count:hover{background:#fde68a;}
+  td.col-case{background:#eff6ff;}
+  td.col-ip{background:#f5f3ff;}
+  td.col-fyp{background:#ecfdf5;}
+  td.col-count{background:#fffbeb;}
+  tbody tr:hover{background:#fafbfd;}
+  .delta-pos{color:var(--green);font-weight:600;}
+  .delta-neg{color:var(--red);font-weight:600;}
+  .delta-zero{color:#94a3b8;}
+  .badge{display:inline-block;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600;}
+  .badge.new{background:#dcfce7;color:var(--green);}
+  .badge.gone{background:#fee2e2;color:var(--red);}
+  .seg-Diamond{color:#0ea5e9;font-weight:600;}
+  .seg-Platinum{color:#7c3aed;font-weight:600;}
+  .seg-Gold{color:#d97706;font-weight:600;}
+  .seg-Terminated{color:#94a3b8;}
+  .searchbox{padding:8px 12px;border:1px solid var(--border);border-radius:7px;font-size:13px;min-width:220px;}
+  .tablewrap{overflow-x:auto;}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;}
+  .kpi{background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;border-left:4px solid #cbd5e1;}
+  .kpi[data-color="case"]{border-left-color:#2563eb;}
+  .kpi[data-color="ip"]{border-left-color:#7c3aed;}
+  .kpi[data-color="fyp"]{border-left-color:#059669;}
+  .kpi[data-color="count"]{border-left-color:#d97706;}
+  .kpi[data-color="pending"]{border-left-color:#ea580c;}
+  .kpi[data-color="pipeline"]{border-left-color:#db2777;}
+  .kpi .label{font-size:12px;color:var(--gray);}
+  .kpi .value{font-size:20px;font-weight:700;color:#0f172a;}
+  .kpi .delta{font-size:12px;margin-top:2px;}
+  .trendbtn{background:none;border:1px solid var(--border);border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px;color:var(--blue);}
+  .empty{padding:30px;text-align:center;color:var(--gray);font-size:13px;}
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:100;align-items:center;justify-content:center;}
+  .modal-overlay.active{display:flex;}
+  .modal{background:#fff;border-radius:12px;padding:20px;width:90%;max-width:700px;max-height:85vh;overflow:auto;}
+  .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .modal-header h3{margin:0;font-size:16px;}
+  .modal-header button{background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray);}
+  .pill{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap;}
+  .pill-IF{background:#dcfce7;color:#166534;}
+  .pill-PS{background:#fef3c7;color:#92400e;}
+  .pill-OTHER{background:#fee2e2;color:#991b1b;}
+  .reqtag{display:inline-block;background:#f1f5f9;color:#334155;border-radius:6px;padding:1px 6px;font-size:11px;margin:1px;cursor:help;}
+  .note{font-size:12px;color:var(--gray);background:#f8fafc;border:1px dashed var(--border);border-radius:8px;padding:10px 12px;margin-top:10px;}
+  .sheetcheck{font-size:12px;margin-top:10px;}
+  .sheetcheck span{display:inline-block;margin-right:14px;}
+  .ok{color:var(--green);} .missing{color:var(--red);}
+</style>
+</head>
+<body>
+
+<!-- ===== LOGIN ===== -->
+<div id="loginScreen">
+  <div class="loginBox">
+    <h1>🔒 Đăng nhập - Theo Dõi Kinh Doanh TVV</h1>
+    <input type="email" id="loginEmail" placeholder="Email">
+    <input type="password" id="loginPassword" placeholder="Mật khẩu">
+    <button id="loginBtn">Đăng nhập</button>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<!-- ===== APP ===== -->
+<div id="appScreen">
+  <header>
+    <h1>📊 Theo Dõi Kinh Doanh TVV Hàng Ngày — GA D07</h1>
+    <div class="userinfo">
+      <span id="userEmail"></span>
+      <button id="logoutBtn">Đăng xuất</button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Upload -->
+    <div class="card">
+      <h2>⬆️ Tải file Daily Sales (đầy đủ sheet: Proposal, Agent, Leader, Pending, Pipeline)</h2>
+      <div class="row">
+        <div class="field">
+          <label>File Excel</label>
+          <input type="file" id="fileInput" accept=".xlsx,.xls">
+        </div>
+        <div class="field">
+          <label>Áp dụng cho ngày</label>
+          <input type="date" id="uploadDate">
+        </div>
+        <button class="btn" id="uploadBtn" disabled>Xử lý & Lưu vào hệ thống</button>
+      </div>
+      <div id="uploadStatus"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="card">
+      <h2>🔎 Xem & So sánh dữ liệu</h2>
+      <div class="row">
+        <div class="field">
+          <label>Tháng</label>
+          <select id="monthSelect"></select>
+        </div>
+        <div class="field">
+          <label>Ngày xem</label>
+          <select id="dateSelect"></select>
+        </div>
+        <div class="field">
+          <label>So sánh với ngày</label>
+          <select id="baselineSelect"></select>
+        </div>
+        <div class="field">
+          <label>Unit</label>
+          <div class="ddown" id="unitDdown">
+            <button type="button" class="ddown-btn" id="unitDropdownBtn">Tất cả Unit</button>
+            <div class="ddown-panel" id="unitDropdownPanel">
+              <label class="ddown-item ddown-all"><input type="checkbox" id="unitSelectAll"><b>Chọn tất cả</b></label>
+              <div id="unitDropdownList"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Hạng TVV</label>
+          <div class="ddown" id="segDdown">
+            <button type="button" class="ddown-btn" id="segDropdownBtn">Tất cả hạng</button>
+            <div class="ddown-panel" id="segDropdownPanel">
+              <label class="ddown-item ddown-all"><input type="checkbox" id="segSelectAll"><b>Chọn tất cả</b></label>
+              <div id="segDropdownList"></div>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Tìm kiếm TVV / Unit</label>
+          <input type="text" class="searchbox" id="searchBox" placeholder="Tên, mã AGCode, Unit...">
+        </div>
+        <button class="btn secondary" id="refreshBtn">↻ Tải lại</button>
+      </div>
+    </div>
+
+    <!-- KPI summary -->
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <!-- Tabs -->
+    <div class="card">
+      <div class="tabs">
+        <button class="tabbtn active" data-tab="tvv">TVV</button>
+        <button class="tabbtn" data-tab="leader">Leader</button>
+        <button class="tabbtn" data-tab="pending">Pending (PS)</button>
+        <button class="tabbtn" data-tab="other">Khác (DC/CF/PO/WD)</button>
+        <button class="tabbtn" data-tab="pipeline">Pipeline (chưa phí)</button>
+      </div>
+
+      <div class="tabpanel active" id="tab-tvv">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
+          <button class="btn secondary" id="exportTvvBtn">⬇️ Xuất Excel (dữ liệu mới nhất)</button>
+        </div>
+        <div class="tablewrap"><table id="tvvTable">
+          <thead><tr>
+            <th data-key="unit">Unit</th><th data-key="agCode">Mã TVV</th><th data-key="agName">Tên TVV</th><th data-key="agSeg">Hạng</th>
+            <th class="col-case" data-key="caseSub">Case Sub</th><th class="col-case" data-key="caseNet">Case Net</th>
+            <th class="col-ip" data-key="ipSub">IP Sub</th><th class="col-ip" data-key="ipNet">IP Net</th>
+            <th class="col-fyp" data-key="fyp">FYP</th><th class="col-fyp" data-key="fyc">FYC</th>
+            <th class="col-count" data-key="cIF">Số HS IF</th><th class="col-count" data-key="cPS">Số HS PS</th><th class="col-count" data-key="cOther">Số HS Khác</th>
+            <th>Xu hướng</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+
+      <div class="tabpanel" id="tab-leader">
+        <div class="tablewrap"><table id="leaderTable">
+          <thead><tr>
+            <th data-key="unit">Unit</th><th data-key="leaderName">Leader</th><th data-key="manpower">Số TVV</th>
+            <th class="col-case" data-key="caseSubUnit">Case Sub</th><th class="col-case" data-key="caseNetUnit">Case Net</th>
+            <th class="col-ip" data-key="ipSubUnit">IP Sub</th><th class="col-ip" data-key="ipNetUnit">IP Net</th>
+            <th class="col-fyp" data-key="apeSubUnit">APE Sub</th><th class="col-fyp" data-key="apeNetUnit">APE Net</th>
+            <th class="col-count" data-key="cIF">Số HS IF</th><th class="col-count" data-key="cPS">Số HS PS</th><th class="col-count" data-key="cOther">Số HS Khác</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+
+      <div class="tabpanel" id="tab-pending">
+        <div class="note" id="pendingDiffNote"></div>
+        <div class="tablewrap"><table id="pendingTable">
+          <thead><tr>
+            <th>Trạng thái</th><th>Unit</th><th>TVV</th><th>Số hồ sơ</th><th>Sản phẩm</th>
+            <th data-key="proposalDate">Ngày nộp</th><th data-key="daysPending">Số ngày chờ</th><th data-key="ape">APE (tr)</th>
+            <th>Người xử lý (PO)</th><th>Lý do chính</th><th>Yêu cầu còn thiếu</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+
+      <div class="tabpanel" id="tab-other">
+        <div class="tablewrap"><table id="otherTable">
+          <thead><tr>
+            <th>Tình trạng</th><th>Unit</th><th>TVV</th><th>Số hồ sơ</th><th>Sản phẩm</th>
+            <th data-key="proposalDate">Ngày nộp</th><th data-key="ipSub">IP Sub</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+
+      <div class="tabpanel" id="tab-pipeline">
+        <div class="note">Hồ sơ đã nộp nhưng <b>chưa đóng phí</b> nên chưa được ghi nhận Case/IP Sub — lấy trực tiếp từ sheet "Pipeline" trong file tải lên.</div>
+        <div id="pipelineDiffNote" class="note" style="margin-top:6px;"></div>
+        <h3 style="font-size:13px;margin:14px 0 6px;color:#334155;">Tổng hợp theo TVV</h3>
+        <div class="tablewrap"><table id="pipelineSummaryTable">
+          <thead><tr><th>Unit</th><th>Mã TVV</th><th>Tên TVV</th><th data-key="count">Số hồ sơ</th><th data-key="ape">Tổng APE chưa phí (tr)</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+        <h3 style="font-size:13px;margin:18px 0 6px;color:#334155;">Chi tiết hồ sơ</h3>
+        <div class="tablewrap"><table id="pipelineDetailTable">
+          <thead><tr><th>Trạng thái</th><th>Unit</th><th>TVV</th><th>Số hồ sơ</th><th>Sản phẩm</th><th data-key="proposalDate">Ngày nộp</th><th data-key="ape">APE (tr)</th><th>PO</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- Trend modal -->
+<div class="modal-overlay" id="trendModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="trendTitle">Xu hướng theo ngày</h3>
+      <button id="trendClose">&times;</button>
+    </div>
+    <div class="field" style="margin-bottom:10px;">
+      <label>Chỉ số</label>
+      <select id="trendMetric">
+        <option value="caseNet">Case Net</option>
+        <option value="caseSub">Case Sub</option>
+        <option value="ipNet">IP Net</option>
+        <option value="ipSub">IP Sub</option>
+        <option value="fyp">FYP</option>
+        <option value="fyc">FYC</option>
+      </select>
+    </div>
+    <canvas id="trendChart" height="260"></canvas>
+
+    <div id="trendPendingWrap" style="margin-top:20px;">
+      <h3 style="font-size:13px;margin:0 0 6px;color:#334155;">🕒 Hồ sơ đang Pending <span id="trendPendingAsOf" style="font-weight:400;color:#94a3b8;"></span></h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Số hồ sơ</th><th>Sản phẩm</th><th>Ngày nộp</th><th>APE (tr)</th><th>PO</th><th>Yêu cầu còn thiếu</th></tr></thead>
+        <tbody id="trendPendingBody"></tbody>
+      </table></div>
+    </div>
+
+    <div id="trendPipelineWrap" style="margin-top:20px;">
+      <h3 style="font-size:13px;margin:0 0 6px;color:#334155;">💤 Hồ sơ Pipeline (chưa phí) <span id="trendPipelineAsOf" style="font-weight:400;color:#94a3b8;"></span></h3>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Số hồ sơ</th><th>Sản phẩm</th><th>Ngày nộp</th><th>APE (tr)</th><th>PO</th></tr></thead>
+        <tbody id="trendPipelineBody"></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, startAt, endAt, getDocs }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyASY63DlWIkvjybM1enPIpdZkxXJjrStQA",
+  authDomain: "d07-sales-dashboard.firebaseapp.com",
+  projectId: "d07-sales-dashboard",
+  storageBucket: "d07-sales-dashboard.firebasestorage.app",
+  messagingSenderId: "820808715064",
+  appId: "1:820808715064:web:62865b8b03b18b6a670fcd"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const COLLECTION_DAILY = "daily_sales_tvv"; // doc id: YYYY-MM-DD
+
+// ---------- AUTH ----------
+document.getElementById("loginBtn").addEventListener("click", async () => {
+  const email = document.getElementById("loginEmail").value.trim();
+  const pw = document.getElementById("loginPassword").value;
+  const errEl = document.getElementById("loginError");
+  errEl.textContent = "";
+  try {
+    await signInWithEmailAndPassword(auth, email, pw);
+  } catch (e) {
+    errEl.textContent = "Đăng nhập thất bại: " + (e.code || e.message);
+  }
+});
+document.getElementById("logoutBtn").addEventListener("click", () => signOut(auth));
+
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    document.getElementById("loginScreen").style.display = "none";
+    document.getElementById("appScreen").style.display = "block";
+    document.getElementById("userEmail").textContent = user.email || "";
+    initAfterLogin();
+  } else {
+    document.getElementById("loginScreen").style.display = "flex";
+    document.getElementById("appScreen").style.display = "none";
+  }
+});
+
+// ---------- STATE ----------
+let currentDayData = null;   // full doc for "Ngày xem"
+let baselineDayData = null;  // full doc for "So sánh với"
+let sortState = { tvv:{key:null,dir:1}, leader:{key:null,dir:1}, pending:{key:null,dir:1}, other:{key:null,dir:1}, pipeline:{key:null,dir:1} };
+let trendChartInstance = null;
+let allDatesCache = [];
+
+function todayStr() { return new Date().toISOString().slice(0,10); }
+
+// ---------- HELPERS ----------
+function isValidCode(v) { return v !== null && v !== undefined && /^\d+$/.test(String(v).trim()); }
+function num(v) { const n = Number(v); return isNaN(n) ? 0 : n; }
+function excelDateIntToISO(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const s = String(v);
+  if (s.length === 8 && /^\d{8}$/.test(s)) return s.slice(0,4) + "-" + s.slice(4,6) + "-" + s.slice(6,8);
+  return null;
+}
+function sheetToRows(wb, name) {
+  if (!wb.SheetNames.includes(name)) return null;
+  const ws = wb.Sheets[name];
+  return XLSX.utils.sheet_to_json(ws, { defval: null, raw: true });
+}
+
+// ---------- PARSE WORKBOOK (5 sheet) ----------
+function parseWorkbook(arrayBuffer) {
+  const wb = XLSX.read(arrayBuffer, { type: "array", cellDates: false });
+
+  const sheetStatus = {};
+  const proposalName = wb.SheetNames.includes("Proposal") ? "Proposal" : (wb.SheetNames.includes("Export") ? "Export" : null);
+  const rawProposal = proposalName ? sheetToRows(wb, proposalName) : null;
+  const rawAgent = sheetToRows(wb, "Agent");
+  const rawLeader = sheetToRows(wb, "Leader");
+  const rawPending = sheetToRows(wb, "Pending");
+  const rawPipeline = sheetToRows(wb, "Pipeline");
+  sheetStatus.proposal = !!rawProposal; sheetStatus.agent = !!rawAgent; sheetStatus.leader = !!rawLeader;
+  sheetStatus.pending = !!rawPending; sheetStatus.pipeline = !!rawPipeline;
+
+  // --- Proposal (line-item, dùng cho đếm IF/PS/Khác và tab Khác) ---
+  const proposalRows = [];
+  for (const r of (rawProposal || [])) {
+    if (typeof r["Yearmonth"] !== "number" || !r["AGCode"]) continue;
+    const status = (r["PolicyStatus"] || "").toString().trim().toUpperCase();
+    const statusGroup = status === "IF" ? "IF" : status === "PS" ? "PS" : "OTHER";
+    proposalRows.push({
+      unit: r["UnitCode"] || "", agCode: String(r["AGCode"]), agName: r["AGName"] || "",
+      proposalNum: r["ProposalNum"] ? String(r["ProposalNum"]) : "",
+      status, statusGroup, statusFull: r["CurrentPolicyStatus"] || "",
+      product: r["Remarked_ProductNameVN"] || r["ProductCode"] || "",
+      proposalDate: excelDateIntToISO(r["ProposalDate"]),
+      firstIssuedDate: excelDateIntToISO(r["FirstIssuedDate"]),
+      caseSub: num(r["Case Sub (IF-PS)"]), ipSub: num(r["IP Sub"]), ipNet: num(r["IP Net"])
+    });
+  }
+
+  // --- Agent (TVV level, chuẩn từ hệ thống) ---
+  const agents = {};
+  for (const r of (rawAgent || [])) {
+    if (typeof r["YearMonth"] !== "number" || !r["AGCode"]) continue;
+    const agCode = String(r["AGCode"]);
+    agents[agCode] = {
+      unit: r["UnitCode"] || "", leaderCode: r["LeaderCode"] ? String(r["LeaderCode"]) : "",
+      agCode, agName: r["AGName"] || "", agSeg: r["AGSegName"] || "",
+      ipSub: num(r["IP Sub"]), caseSub: num(r["Case Sub"]), fyp: num(r["FYP"]),
+      ipNet: num(r["IP Net"]), caseNet: num(r["Case Net"]), fyc: num(r["FYC"]),
+      cIF: 0, cPS: 0, cOther: 0
+    };
+  }
+  // gắn đếm số hồ sơ IF/PS/Khác từ Proposal vào từng TVV
+  for (const p of proposalRows) {
+    if (!agents[p.agCode]) continue;
+    if (p.statusGroup === "IF") agents[p.agCode].cIF++;
+    else if (p.statusGroup === "PS") agents[p.agCode].cPS++;
+    else agents[p.agCode].cOther++;
+  }
+
+  // --- Leader (Unit level, chuẩn từ hệ thống, thiếu IP nên cộng dồn thêm từ Agent) ---
+  const units = {};
+  for (const r of (rawLeader || [])) {
+    if (typeof r["YearMonth"] !== "number" || !r["UnitCode"]) continue;
+    const unitCode = r["UnitCode"];
+    units[unitCode] = {
+      unit: unitCode, leaderName: r["LeaderName"] || "", agSeg: r["AGSegName"] || "",
+      manpower: num(r["#Manpower"]),
+      caseSubUnit: num(r["Case Sub Unit"]), caseNetUnit: num(r["Case Net Unit"]),
+      apeSubUnit: num(r["APE Sub Unit"]), apeNetUnit: num(r["APE Net Unit"]),
+      ipSubUnit: 0, ipNetUnit: 0, cIF: 0, cPS: 0, cOther: 0
+    };
+  }
+  for (const agCode in agents) {
+    const a = agents[agCode];
+    if (!units[a.unit]) units[a.unit] = { unit: a.unit, leaderName: "", agSeg: "", manpower: 0, caseSubUnit:0, caseNetUnit:0, apeSubUnit:0, apeNetUnit:0, ipSubUnit:0, ipNetUnit:0, cIF:0, cPS:0, cOther:0 };
+    const u = units[a.unit];
+    u.ipSubUnit += a.ipSub; u.ipNetUnit += a.ipNet;
+    u.cIF += a.cIF; u.cPS += a.cPS; u.cOther += a.cOther;
+  }
+
+  // --- Pending (chi tiết hồ sơ PS) ---
+  const reqFields = ["Accept Letter","Compliance","Internal Pending","Medical Check","Medical Info","Personal Info","IndependentCall","Voice Recording"];
+  const pendingRows = [];
+  for (const r of (rawPending || [])) {
+    if (!isValidCode(r["AGCode"]) || !r["ProposalNum"]) continue;
+    const requirements = reqFields
+      .filter(f => r[f] !== null && r[f] !== undefined && String(r[f]).trim() !== "")
+      .map(f => ({ name: f, detail: String(r[f]).slice(0,200) }));
+    pendingRows.push({
+      unit: r["UnitCode"] || "", agCode: String(r["AGCode"]), agName: r["AGName"] || "",
+      proposalNum: String(r["ProposalNum"]), proposalDate: excelDateIntToISO(r["ProposalDate"]),
+      product: r["ProductNameVN"] || r["BasicProductCode"] || "", ape: num(r["APE (mil)"]),
+      poName: r["POName"] || "", description: r["Description"] || "",
+      classify: r["Classify"] || "", requirements
+    });
+  }
+
+  // --- Pipeline (chưa đóng phí) ---
+  const pipelineRows = [];
+  for (const r of (rawPipeline || [])) {
+    if (!isValidCode(r["AGCode"]) || !r["ProposalNum"]) continue;
+    pipelineRows.push({
+      unit: r["UnitCode"] || "", agCode: String(r["AGCode"]), agName: r["AGName"] || "",
+      proposalNum: String(r["ProposalNum"]), proposalDate: excelDateIntToISO(r["ProposalDate"]),
+      product: r["ProductNameVN"] || r["BasicProductCode"] || "", ape: num(r["APE (mil)"]),
+      poName: r["PO_Name"] || "", description: r["Description"] || "", classify: r["Classify"] || ""
+    });
+  }
+
+  return { sheetStatus, proposalRows, agents, units, pendingRows, pipelineRows };
+}
+
+// ---------- FIRESTORE ----------
+async function saveDailyDoc(dateStr, parsed) {
+  await setDoc(doc(db, COLLECTION_DAILY, dateStr), {
+    updatedAt: new Date().toISOString(),
+    agents: parsed.agents, units: parsed.units,
+    proposalRows: parsed.proposalRows, pendingRows: parsed.pendingRows, pipelineRows: parsed.pipelineRows
+  });
+}
+async function loadDailyDoc(dateStr) {
+  if (!dateStr) return null;
+  const snap = await getDoc(doc(db, COLLECTION_DAILY, dateStr));
+  return snap.exists() ? snap.data() : null;
+}
+async function listAllMonths() {
+  const snaps = await getDocs(collection(db, COLLECTION_DAILY));
+  const months = new Set(); const dates = [];
+  snaps.forEach(s => { months.add(s.id.slice(0,7)); dates.push(s.id); });
+  allDatesCache = dates.sort();
+  return Array.from(months).sort();
+}
+
+// ---------- UPLOAD ----------
+const fileInput = document.getElementById("fileInput");
+const uploadBtn = document.getElementById("uploadBtn");
+const uploadDateInput = document.getElementById("uploadDate");
+uploadDateInput.value = todayStr();
+
+let pendingParsed = null;
+fileInput.addEventListener("change", async () => {
+  const f = fileInput.files[0];
+  uploadBtn.disabled = true;
+  document.getElementById("uploadStatus").innerHTML = "";
+  if (!f) return;
+  try {
+    const buf = await f.arrayBuffer();
+    pendingParsed = parseWorkbook(buf);
+    const s = pendingParsed.sheetStatus;
+    const line = (label, ok) => `<span class="${ok?'ok':'missing'}">${ok?'✔':'✘'} ${label}</span>`;
+    document.getElementById("uploadStatus").innerHTML =
+      `Đã đọc: ${Object.keys(pendingParsed.agents).length} TVV, ${Object.keys(pendingParsed.units).length} Unit, ` +
+      `${pendingParsed.pendingRows.length} hồ sơ Pending, ${pendingParsed.pipelineRows.length} hồ sơ Pipeline, ${pendingParsed.proposalRows.length} dòng Proposal.` +
+      `<div class="sheetcheck">${line("Proposal", s.proposal)} ${line("Agent", s.agent)} ${line("Leader", s.leader)} ${line("Pending", s.pending)} ${line("Pipeline", s.pipeline)}</div>` +
+      `Chọn ngày áp dụng rồi bấm Lưu.`;
+    uploadBtn.disabled = false;
+  } catch (e) {
+    document.getElementById("uploadStatus").innerHTML = `<span style="color:var(--red)">Lỗi đọc file: ${e.message}</span>`;
+  }
+});
+
+uploadBtn.addEventListener("click", async () => {
+  if (!pendingParsed) return;
+  const dateStr = uploadDateInput.value;
+  if (!dateStr) { alert("Vui lòng chọn ngày áp dụng"); return; }
+  uploadBtn.disabled = true;
+  const prevHtml = document.getElementById("uploadStatus").innerHTML;
+  document.getElementById("uploadStatus").innerHTML = "Đang lưu...";
+  try {
+    await saveDailyDoc(dateStr, pendingParsed);
+    document.getElementById("uploadStatus").innerHTML = `<span style="color:var(--green)">✔ Đã lưu dữ liệu ngày ${dateStr}.</span>`;
+    await refreshMonthAndDateSelectors(dateStr);
+  } catch (e) {
+    document.getElementById("uploadStatus").innerHTML = prevHtml + `<br><span style="color:var(--red)">Lỗi lưu: ${e.message}</span>`;
+  } finally {
+    uploadBtn.disabled = false;
+  }
+});
+
+// ---------- FORMAT / DELTA ----------
+function fmt(n) { if (n === undefined || n === null) return "0"; return Math.round(Number(n)).toLocaleString("vi-VN"); }
+function sumApe(rows) { return (rows || []).reduce((s,r) => s + (r.ape || 0), 0); }
+function deltaHtml(cur, base) {
+  if (base === undefined || base === null) return `<span class="badge new">Mới</span>`;
+  const d = cur - base;
+  if (Math.abs(d) < 0.0001) return `<span class="delta-zero">0</span>`;
+  const cls = d > 0 ? "delta-pos" : "delta-neg"; const sign = d > 0 ? "+" : "";
+  return `<span class="${cls}">${sign}${fmt(d)}</span>`;
+}
+function cellWithDelta(cur, base) { return `${fmt(cur)} <br><small>${deltaHtml(cur, base)}</small>`; }
+
+// ---------- SELECTORS ----------
+const monthSelect = document.getElementById("monthSelect");
+const dateSelect = document.getElementById("dateSelect");
+const baselineSelect = document.getElementById("baselineSelect");
+
+async function refreshMonthAndDateSelectors(preferredDate) {
+  const months = await listAllMonths();
+  monthSelect.innerHTML = "";
+  if (!months.length) {
+    monthSelect.innerHTML = `<option value="">(chưa có dữ liệu)</option>`;
+    dateSelect.innerHTML = ""; baselineSelect.innerHTML = "";
+    renderAll(); return;
+  }
+  months.forEach(m => monthSelect.innerHTML += `<option value="${m}">${m}</option>`);
+  const targetMonth = preferredDate ? preferredDate.slice(0,7) : months[months.length-1];
+  monthSelect.value = targetMonth;
+  await refreshDatesForMonth(targetMonth, preferredDate);
+}
+async function refreshDatesForMonth(monthStr, preferredDate) {
+  const dates = allDatesCache.filter(d => d.startsWith(monthStr));
+  dateSelect.innerHTML = ""; baselineSelect.innerHTML = `<option value="">(không so sánh)</option>`;
+  dates.forEach(d => { dateSelect.innerHTML += `<option value="${d}">${d}</option>`; baselineSelect.innerHTML += `<option value="${d}">${d}</option>`; });
+  const viewDate = preferredDate && dates.includes(preferredDate) ? preferredDate : dates[dates.length-1];
+  dateSelect.value = viewDate;
+  const idx = dates.indexOf(viewDate);
+  baselineSelect.value = idx > 0 ? dates[idx-1] : "";
+  await loadAndRender();
+}
+monthSelect.addEventListener("change", () => refreshDatesForMonth(monthSelect.value));
+dateSelect.addEventListener("change", loadAndRender);
+baselineSelect.addEventListener("change", loadAndRender);
+document.getElementById("refreshBtn").addEventListener("click", () => refreshMonthAndDateSelectors(dateSelect.value));
+document.getElementById("searchBox").addEventListener("input", renderAll);
+
+// ---------- CHECKBOX DROPDOWN FILTERS ----------
+let unitSelected = new Set();
+let segSelected = new Set();
+
+function setupDropdownToggle(btnId, panelId) {
+  const btn = document.getElementById(btnId), panel = document.getElementById(panelId);
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    document.querySelectorAll(".ddown-panel.open").forEach(p => { if (p !== panel) p.classList.remove("open"); });
+    panel.classList.toggle("open");
+  });
+}
+document.addEventListener("click", (e) => {
+  document.querySelectorAll(".ddown-panel.open").forEach(p => { if (!p.contains(e.target) && p.previousElementSibling !== e.target) p.classList.remove("open"); });
+});
+setupDropdownToggle("unitDropdownBtn", "unitDropdownPanel");
+setupDropdownToggle("segDropdownBtn", "segDropdownPanel");
+
+function updateDropdownButton(btnId, values, selectedSet, allLabel) {
+  const btn = document.getElementById(btnId);
+  if (selectedSet.size === 0 || selectedSet.size === values.length) btn.textContent = `Tất cả ${allLabel}`;
+  else if (selectedSet.size <= 2) btn.textContent = Array.from(selectedSet).join(", ");
+  else btn.textContent = `${selectedSet.size} ${allLabel} đã chọn`;
+}
+
+function populateDropdownList(listId, selectAllId, btnId, values, selectedSet, allLabel) {
+  const list = document.getElementById(listId);
+  const selectAllCb = document.getElementById(selectAllId);
+  list.innerHTML = values.map(v => `<label class="ddown-item"><input type="checkbox" class="ddown-cb" value="${v}" ${selectedSet.has(v)?"checked":""}> ${v}</label>`).join("")
+    || `<div style="padding:6px;color:#94a3b8;font-size:12px;">(chưa có dữ liệu)</div>`;
+  selectAllCb.checked = values.length > 0 && selectedSet.size === values.length;
+  updateDropdownButton(btnId, values, selectedSet, allLabel);
+
+  list.querySelectorAll(".ddown-cb").forEach(cb => cb.addEventListener("change", () => {
+    if (cb.checked) selectedSet.add(cb.value); else selectedSet.delete(cb.value);
+    selectAllCb.checked = selectedSet.size === values.length && values.length > 0;
+    updateDropdownButton(btnId, values, selectedSet, allLabel);
+    renderAll();
+  }));
+  selectAllCb.onchange = () => {
+    if (selectAllCb.checked) values.forEach(v => selectedSet.add(v)); else selectedSet.clear();
+    populateDropdownList(listId, selectAllId, btnId, values, selectedSet, allLabel);
+    renderAll();
+  };
+}
+
+function populateFilters(agents, units) {
+  const unitList = Array.from(new Set(Object.values(units).map(u => u.unit).filter(Boolean))).sort();
+  const segList = Array.from(new Set(Object.values(agents).map(a => a.agSeg).filter(Boolean))).sort();
+  unitSelected = new Set(Array.from(unitSelected).filter(v => unitList.includes(v)));
+  segSelected = new Set(Array.from(segSelected).filter(v => segList.includes(v)));
+  populateDropdownList("unitDropdownList", "unitSelectAll", "unitDropdownBtn", unitList, unitSelected, "Unit");
+  populateDropdownList("segDropdownList", "segSelectAll", "segDropdownBtn", segList, segSelected, "hạng");
+}
+
+async function loadAndRender() {
+  const viewDate = dateSelect.value, baseDate = baselineSelect.value;
+  currentDayData = viewDate ? await loadDailyDoc(viewDate) : null;
+  baselineDayData = baseDate ? await loadDailyDoc(baseDate) : null;
+  populateFilters(currentDayData ? currentDayData.agents : {}, currentDayData ? currentDayData.units : {});
+  renderAll();
+}
+
+// ---------- TABS ----------
+document.querySelectorAll(".tabbtn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tabbtn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tabpanel").forEach(p => p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+  });
+});
+
+// ---------- SORT ----------
+["tvvTable","leaderTable","pendingTable","otherTable","pipelineSummaryTable"].forEach(id => {
+  const tabKey = id.replace("Table","").replace("Summary","");
+  document.querySelectorAll(`#${id} th[data-key]`).forEach(th => th.addEventListener("click", () => sortAndRender(tabKey, th.dataset.key)));
+});
+function sortAndRender(tab, key) {
+  const s = sortState[tab] || (sortState[tab] = {key:null,dir:1});
+  s.dir = (s.key === key) ? -s.dir : 1; s.key = key;
+  renderAll();
+}
+function applySort(list, tab) {
+  const s = sortState[tab];
+  if (!s || !s.key) return list;
+  return [...list].sort((a,b) => {
+    const av = a[s.key], bv = b[s.key];
+    if (typeof av === "string") return av.localeCompare(bv) * s.dir;
+    return ((av||0) - (bv||0)) * s.dir;
+  });
+}
+
+// ---------- EXPORT TVV (dữ liệu mới nhất) ----------
+document.getElementById("exportTvvBtn").addEventListener("click", exportTvvLatest);
+
+async function exportTvvLatest() {
+  const latestDate = allDatesCache.length ? allDatesCache[allDatesCache.length - 1] : null;
+  if (!latestDate) { alert("Chưa có dữ liệu để xuất"); return; }
+  const dd = await loadDailyDoc(latestDate);
+  const agents = dd ? dd.agents : {};
+  let list = Object.values(agents);
+
+  const unitF = Array.from(unitSelected), segF = Array.from(segSelected);
+  if (unitF.length) list = list.filter(a => unitF.includes(a.unit));
+  if (segF.length) list = list.filter(a => segF.includes(a.agSeg));
+  const search = document.getElementById("searchBox").value.trim().toLowerCase();
+  if (search) list = list.filter(a => (a.agName||"").toLowerCase().includes(search) || (a.agCode||"").toLowerCase().includes(search) || (a.unit||"").toLowerCase().includes(search));
+  list = applySort(list, "tvv");
+
+  if (!list.length) { alert("Không có dữ liệu phù hợp bộ lọc hiện tại để xuất"); return; }
+
+  const rows = list.map(a => ({
+    "Unit": a.unit, "Mã TVV": a.agCode, "Tên TVV": a.agName, "Hạng": a.agSeg,
+    "Case Sub": Math.round(a.caseSub || 0), "Case Net": Math.round(a.caseNet || 0),
+    "IP Sub": Math.round(a.ipSub || 0), "IP Net": Math.round(a.ipNet || 0),
+    "FYP": Math.round(a.fyp || 0), "FYC": Math.round(a.fyc || 0),
+    "Số HS IF": a.cIF || 0, "Số HS PS": a.cPS || 0, "Số HS Khác": a.cOther || 0
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "TVV");
+  XLSX.writeFile(wb, `TVV_${latestDate}.xlsx`);
+}
+
+// ---------- RENDER ----------
+function renderAll() {
+  const search = document.getElementById("searchBox").value.trim().toLowerCase();
+  const unitF = Array.from(unitSelected), segF = Array.from(segSelected);
+  const agents = currentDayData ? currentDayData.agents : {};
+  const baseAgents = baselineDayData ? baselineDayData.agents : {};
+  const units = currentDayData ? currentDayData.units : {};
+  const baseUnits = baselineDayData ? baselineDayData.units : {};
+  const proposalRows = currentDayData ? (currentDayData.proposalRows || []) : [];
+  const pendingRows = currentDayData ? (currentDayData.pendingRows || []) : [];
+  const basePendingRows = baselineDayData ? (baselineDayData.pendingRows || []) : [];
+  const pipelineRows = currentDayData ? (currentDayData.pipelineRows || []) : [];
+  const basePipelineRows = baselineDayData ? (baselineDayData.pipelineRows || []) : [];
+
+  renderKpis(agents, baseAgents, pendingRows, basePendingRows, pipelineRows, basePipelineRows);
+  renderTvvTable(agents, baseAgents, search, unitF, segF);
+  renderLeaderTable(units, baseUnits, search, unitF);
+  renderPendingTable(pendingRows, basePendingRows, search);
+  renderOtherTable(proposalRows, search);
+  renderPipelineTables(pipelineRows, basePipelineRows, search);
+}
+
+function renderKpis(agents, baseAgents, pendingRows, basePendingRows, pipelineRows, basePipelineRows) {
+  const list = Object.values(agents);
+  const totals = list.reduce((acc,a) => { acc.caseSub+=a.caseSub; acc.caseNet+=a.caseNet; acc.ipSub+=a.ipSub; acc.ipNet+=a.ipNet; acc.cIF+=a.cIF; acc.cPS+=a.cPS; acc.cOther+=a.cOther; return acc; },
+    {caseSub:0,caseNet:0,ipSub:0,ipNet:0,cIF:0,cPS:0,cOther:0});
+  const baseTotals = Object.values(baseAgents).reduce((acc,a) => { acc.caseSub+=a.caseSub; acc.caseNet+=a.caseNet; acc.ipSub+=a.ipSub; acc.ipNet+=a.ipNet; return acc; },
+    {caseSub:0,caseNet:0,ipSub:0,ipNet:0});
+  const cards = [
+    ["Số TVV", list.length, null, "count"],
+    ["Case Sub", totals.caseSub, baseTotals.caseSub, "case"],
+    ["Case Net", totals.caseNet, baseTotals.caseNet, "case"],
+    ["IP Sub", totals.ipSub, baseTotals.ipSub, "ip"],
+    ["IP Net", totals.ipNet, baseTotals.ipNet, "ip"],
+    ["Hồ sơ IF / PS / Khác", `${totals.cIF} / ${totals.cPS} / ${totals.cOther}`, null, "count"],
+    ["Tổng Pending (APE, tr)", sumApe(pendingRows), sumApe(basePendingRows), "pending"],
+    ["Tổng Pipeline (APE chưa phí, tr)", sumApe(pipelineRows), sumApe(basePipelineRows), "pipeline"]
+  ];
+  document.getElementById("kpiGrid").innerHTML = cards.map(([label,val,base,color]) => `
+    <div class="kpi" data-color="${color}"><div class="label">${label}</div><div class="value">${typeof val==="number"?fmt(val):val}</div>
+    ${base!==null?`<div class="delta">${deltaHtml(val,base)}</div>`:""}</div>`).join("");
+}
+
+function renderTvvTable(agents, baseAgents, search, unitF, segF) {
+  let list = Object.values(agents);
+  if (unitF && unitF.length) list = list.filter(a => unitF.includes(a.unit));
+  if (segF && segF.length) list = list.filter(a => segF.includes(a.agSeg));
+  if (search) list = list.filter(a => (a.agName||"").toLowerCase().includes(search) || (a.agCode||"").toLowerCase().includes(search) || (a.unit||"").toLowerCase().includes(search));
+  list = applySort(list, "tvv");
+  const tbody = document.querySelector("#tvvTable tbody");
+  if (!list.length) { tbody.innerHTML = `<tr><td colspan="14" class="empty">Không có dữ liệu — hãy tải file cho ngày này</td></tr>`; return; }
+  tbody.innerHTML = list.map(a => {
+    const base = baseAgents[a.agCode];
+    return `<tr>
+      <td>${a.unit}</td><td>${a.agCode}</td><td>${a.agName}</td><td class="seg-${a.agSeg}">${a.agSeg||""}</td>
+      <td class="col-case">${cellWithDelta(a.caseSub, base?.caseSub)}</td><td class="col-case">${cellWithDelta(a.caseNet, base?.caseNet)}</td>
+      <td class="col-ip">${cellWithDelta(a.ipSub, base?.ipSub)}</td><td class="col-ip">${cellWithDelta(a.ipNet, base?.ipNet)}</td>
+      <td class="col-fyp">${cellWithDelta(a.fyp, base?.fyp)}</td><td class="col-fyp">${cellWithDelta(a.fyc, base?.fyc)}</td>
+      <td class="col-count">${a.cIF}</td><td class="col-count">${a.cPS}</td><td class="col-count">${a.cOther}</td>
+      <td><button class="trendbtn" data-agcode="${a.agCode}" data-agname="${a.agName}">📈</button></td>
+    </tr>`;
+  }).join("");
+  tbody.querySelectorAll(".trendbtn").forEach(b => b.addEventListener("click", () => openTrend(b.dataset.agcode, b.dataset.agname)));
+}
+
+function renderLeaderTable(units, baseUnits, search, unitF) {
+  let list = Object.values(units);
+  if (unitF && unitF.length) list = list.filter(u => unitF.includes(u.unit));
+  if (search) list = list.filter(u => (u.unit||"").toLowerCase().includes(search) || (u.leaderName||"").toLowerCase().includes(search));
+  list = applySort(list, "leader");
+  const tbody = document.querySelector("#leaderTable tbody");
+  if (!list.length) { tbody.innerHTML = `<tr><td colspan="12" class="empty">Không có dữ liệu</td></tr>`; return; }
+  tbody.innerHTML = list.map(u => {
+    const base = baseUnits[u.unit];
+    return `<tr>
+      <td>${u.unit}</td><td>${u.leaderName}</td><td>${u.manpower}</td>
+      <td class="col-case">${cellWithDelta(u.caseSubUnit, base?.caseSubUnit)}</td><td class="col-case">${cellWithDelta(u.caseNetUnit, base?.caseNetUnit)}</td>
+      <td class="col-ip">${cellWithDelta(u.ipSubUnit, base?.ipSubUnit)}</td><td class="col-ip">${cellWithDelta(u.ipNetUnit, base?.ipNetUnit)}</td>
+      <td class="col-fyp">${cellWithDelta(u.apeSubUnit, base?.apeSubUnit)}</td><td class="col-fyp">${cellWithDelta(u.apeNetUnit, base?.apeNetUnit)}</td>
+      <td class="col-count">${u.cIF}</td><td class="col-count">${u.cPS}</td><td class="col-count">${u.cOther}</td>
+    </tr>`;
+  }).join("");
+}
+
+function reqTagsHtml(requirements) {
+  if (!requirements || !requirements.length) return "";
+  return requirements.map(r => `<span class="reqtag" title="${r.detail.replace(/"/g,'&quot;')}">${r.name}</span>`).join(" ");
+}
+
+function renderPendingTable(rows, baseRows, search) {
+  let list = rows.slice();
+  if (search) list = list.filter(r => (r.agName||"").toLowerCase().includes(search) || (r.unit||"").toLowerCase().includes(search));
+  list = list.map(r => { const days = r.proposalDate ? Math.floor((new Date() - new Date(r.proposalDate)) / 86400000) : null; return {...r, daysPending: days}; });
+  list = applySort(list, "pending");
+
+  const baseSet = new Set(baseRows.map(r => r.proposalNum));
+  const curSet = new Set(rows.map(r => r.proposalNum));
+  const resolvedCount = baseRows.filter(r => !curSet.has(r.proposalNum)).length;
+  document.getElementById("pendingDiffNote").textContent = baseRows.length
+    ? `So với ngày trước: ${resolvedCount} hồ sơ đã xử lý xong (không còn Pending), ${rows.filter(r=>!baseSet.has(r.proposalNum)).length} hồ sơ Pending mới.`
+    : "";
+
+  const tbody = document.querySelector("#pendingTable tbody");
+  if (!list.length) { tbody.innerHTML = `<tr><td colspan="11" class="empty">Không có hồ sơ Pending (PS)</td></tr>`; return; }
+  tbody.innerHTML = list.map(r => {
+    const badge = baseRows.length ? (baseSet.has(r.proposalNum) ? "" : `<span class="badge new">Mới</span>`) : "";
+    return `<tr>
+      <td>${badge}</td><td>${r.unit}</td><td>${r.agName}</td><td>${r.proposalNum}</td><td>${r.product}</td>
+      <td>${r.proposalDate||""}</td><td>${r.daysPending ?? ""}</td><td>${fmt(r.ape)}</td>
+      <td>${r.poName}</td><td>${r.description}</td><td>${reqTagsHtml(r.requirements)}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderOtherTable(rows, search) {
+  let list = rows.filter(r => r.statusGroup === "OTHER");
+  if (search) list = list.filter(r => (r.agName||"").toLowerCase().includes(search) || (r.unit||"").toLowerCase().includes(search));
+  list = applySort(list, "other");
+  const tbody = document.querySelector("#otherTable tbody");
+  if (!list.length) { tbody.innerHTML = `<tr><td colspan="7" class="empty">Không có hồ sơ khác (DC/CF/PO/WD)</td></tr>`; return; }
+  tbody.innerHTML = list.map(r => `<tr>
+    <td><span class="pill pill-OTHER">${r.status}</span> ${r.statusFull||""}</td>
+    <td>${r.unit}</td><td>${r.agName}</td><td>${r.proposalNum}</td><td>${r.product}</td>
+    <td>${r.proposalDate||""}</td><td>${fmt(r.ipSub)}</td>
+  </tr>`).join("");
+}
+
+function renderPipelineTables(rows, baseRows, search) {
+  let list = rows.slice();
+  if (search) list = list.filter(r => (r.agName||"").toLowerCase().includes(search) || (r.unit||"").toLowerCase().includes(search));
+
+  const baseSet = new Set(baseRows.map(r => r.proposalNum));
+  const curSet = new Set(rows.map(r => r.proposalNum));
+  const resolvedCount = baseRows.filter(r => !curSet.has(r.proposalNum)).length;
+  document.getElementById("pipelineDiffNote").textContent = baseRows.length
+    ? `So với ngày trước: ${resolvedCount} hồ sơ đã đóng phí hoặc rời khỏi Pipeline, ${rows.filter(r=>!baseSet.has(r.proposalNum)).length} hồ sơ Pipeline mới.`
+    : "";
+
+  // summary by agent
+  const byAgent = {};
+  for (const r of list) {
+    if (!byAgent[r.agCode]) byAgent[r.agCode] = { unit: r.unit, agCode: r.agCode, agName: r.agName, count: 0, ape: 0 };
+    byAgent[r.agCode].count++; byAgent[r.agCode].ape += r.ape;
+  }
+  let summaryList = applySort(Object.values(byAgent), "pipeline");
+  const sumBody = document.querySelector("#pipelineSummaryTable tbody");
+  sumBody.innerHTML = summaryList.length ? summaryList.map(a =>
+    `<tr><td>${a.unit}</td><td>${a.agCode}</td><td>${a.agName}</td><td>${a.count}</td><td>${fmt(a.ape)}</td></tr>`
+  ).join("") : `<tr><td colspan="5" class="empty">Không có dữ liệu Pipeline cho ngày này</td></tr>`;
+
+  const detBody = document.querySelector("#pipelineDetailTable tbody");
+  detBody.innerHTML = list.length ? list.map(r => {
+    const badge = baseRows.length ? (baseSet.has(r.proposalNum) ? "" : `<span class="badge new">Mới</span>`) : "";
+    return `<tr><td>${badge}</td><td>${r.unit}</td><td>${r.agName}</td><td>${r.proposalNum}</td><td>${r.product}</td><td>${r.proposalDate||""}</td><td>${fmt(r.ape)}</td><td>${r.poName}</td></tr>`;
+  }).join("") : `<tr><td colspan="8" class="empty">Không có dữ liệu Pipeline cho ngày này</td></tr>`;
+}
+
+// ---------- TREND MODAL ----------
+const trendModal = document.getElementById("trendModal");
+document.getElementById("trendClose").addEventListener("click", () => trendModal.classList.remove("active"));
+document.getElementById("trendMetric").addEventListener("change", () => {
+  if (trendModal.classList.contains("active")) openTrend(trendModal.dataset.agcode, trendModal.dataset.agname);
+});
+
+async function openTrend(agCode, agName) {
+  trendModal.dataset.agcode = agCode; trendModal.dataset.agname = agName;
+  document.getElementById("trendTitle").textContent = `Xu hướng theo ngày — ${agName} (${agCode})`;
+  trendModal.classList.add("active");
+  const monthStr = monthSelect.value;
+  const dates = allDatesCache.filter(d => d.startsWith(monthStr)).sort();
+  const metric = document.getElementById("trendMetric").value;
+  const values = [];
+  for (const d of dates) {
+    const dd = await loadDailyDoc(d);
+    const a = dd && dd.agents ? dd.agents[agCode] : null;
+    values.push(a ? a[metric] : 0);
+  }
+  const ctx = document.getElementById("trendChart").getContext("2d");
+  if (trendChartInstance) trendChartInstance.destroy();
+  trendChartInstance = new Chart(ctx, {
+    type: "line",
+    data: { labels: dates.map(d=>d.slice(8,10)), datasets: [{ label: metric, data: values, borderColor:"#1d4ed8", backgroundColor:"#eff6ff", tension:.25, fill:true }] },
+    options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+  });
+
+  await renderTrendCaseLists(agCode);
+}
+
+async function renderTrendCaseLists(agCode) {
+  const latestDate = allDatesCache.length ? allDatesCache[allDatesCache.length - 1] : null;
+  const asOfText = latestDate ? `(cập nhật ngày ${latestDate})` : "";
+  document.getElementById("trendPendingAsOf").textContent = asOfText;
+  document.getElementById("trendPipelineAsOf").textContent = asOfText;
+
+  const latestDoc = latestDate ? await loadDailyDoc(latestDate) : null;
+  const pendingList = latestDoc ? (latestDoc.pendingRows || []).filter(r => r.agCode === agCode) : [];
+  const pipelineList = latestDoc ? (latestDoc.pipelineRows || []).filter(r => r.agCode === agCode) : [];
+
+  const pBody = document.getElementById("trendPendingBody");
+  pBody.innerHTML = pendingList.length ? pendingList.map(r => `
+    <tr><td>${r.proposalNum}</td><td>${r.product}</td><td>${r.proposalDate||""}</td><td>${fmt(r.ape)}</td><td>${r.poName}</td><td>${reqTagsHtml(r.requirements)}</td></tr>
+  `).join("") : `<tr><td colspan="6" class="empty">Không có hồ sơ Pending</td></tr>`;
+
+  const plBody = document.getElementById("trendPipelineBody");
+  plBody.innerHTML = pipelineList.length ? pipelineList.map(r => `
+    <tr><td>${r.proposalNum}</td><td>${r.product}</td><td>${r.proposalDate||""}</td><td>${fmt(r.ape)}</td><td>${r.poName}</td></tr>
+  `).join("") : `<tr><td colspan="5" class="empty">Không có hồ sơ Pipeline</td></tr>`;
+}
+
+// ---------- INIT ----------
+async function initAfterLogin() { await refreshMonthAndDateSelectors(); }
+</script>
+</body>
+</html>
