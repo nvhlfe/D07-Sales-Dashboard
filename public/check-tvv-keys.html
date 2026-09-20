@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kiểm tra format mã TVV (chỉ đọc)</title>
+<style>
+  :root{--blue:#1d4ed8;--red:#dc2626;--green:#16a34a;--amber:#d97706;--gray:#64748b;--border:#e2e8f0;--bg:#f8fafc}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:#0f172a}
+  #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .loginBox{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.08);width:320px}
+  .loginBox h1{font-size:16px;margin:0 0 20px;color:var(--blue)}
+  .loginBox input{width:100%;padding:10px;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;font-size:14px}
+  .loginBox button{width:100%;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-weight:600}
+  #loginError{color:var(--red);font-size:13px;margin-top:8px;min-height:16px}
+  #appScreen{display:none}
+  header{background:#fff;border-bottom:1px solid var(--border);padding:16px 24px}
+  h1{font-size:18px;margin:0;color:var(--blue)}
+  .sub{font-size:13px;color:var(--gray);margin-top:4px}
+  main{max-width:1100px;margin:0 auto;padding:20px 24px 60px}
+  .card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:18px}
+  .card h2{font-size:15px;margin:0 0 10px}
+  .btn{background:var(--blue);color:#fff;border:none;padding:10px 18px;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  #status{font-size:13px;margin-top:10px;white-space:pre-line;color:var(--gray)}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+  th{background:#f1f5f9;color:#334155}
+  .variant{display:inline-block;background:#fef3c7;color:#92400e;border-radius:5px;padding:1px 6px;margin:1px;font-family:monospace;font-size:12px}
+  .src{display:inline-block;background:#eff6ff;color:#1e40af;border-radius:5px;padding:1px 6px;margin:1px;font-size:11px}
+  .empty{padding:16px;text-align:center;color:var(--gray)}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+  .kpi{background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+  .kpi .label{font-size:12px;color:var(--gray)}
+  .kpi .value{font-size:20px;font-weight:700}
+  .note{font-size:12px;color:var(--gray);background:#f8fafc;border:1px dashed var(--border);border-radius:8px;padding:10px 12px;margin-top:10px}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="loginBox">
+    <h1>🔒 Đăng nhập</h1>
+    <input type="email" id="loginEmail" placeholder="Email">
+    <input type="password" id="loginPassword" placeholder="Mật khẩu">
+    <button id="loginBtn">Đăng nhập</button>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<div id="appScreen">
+  <header>
+    <h1>🔍 Kiểm tra format mã TVV (AGCode / MSDL)</h1>
+    <div class="sub">Công cụ này CHỈ ĐỌC dữ liệu — không sửa hay xoá bất cứ gì. Dùng để xem trước khi quyết định có cần chuẩn hoá format mã hay không.</div>
+  </header>
+  <main>
+    <div class="card">
+      <button class="btn" id="scanBtn">▶ Quét dữ liệu</button>
+      <div id="status"></div>
+    </div>
+
+    <div id="results" style="display:none">
+      <div class="kpi-grid" id="kpiGrid"></div>
+
+      <div class="card">
+        <h2>1. Mã có nhiều biến thể chữ/số khác nhau (nghi cùng 1 người)</h2>
+        <div class="note">Gộp theo mã đã chuẩn hoá (bỏ khoảng trắng, bỏ số 0 ở đầu). Nếu 1 mã chuẩn hoá ứng với ≥2 cách viết khác nhau trong dữ liệu thật, rất có thể đó là cùng 1 TVV nhưng bị lưu lệch định dạng ở 1 số collection.</div>
+        <table id="variantTable"><thead><tr><th>Mã chuẩn hoá</th><th>Các biến thể gặp</th><th>Xuất hiện ở</th></tr></thead><tbody></tbody></table>
+      </div>
+
+      <div class="card">
+        <h2>2. Mã ở Sales Report / ManMark / Pending KHÔNG khớp mã nào trong daily_sales_tvv</h2>
+        <div class="note">daily_sales_tvv (sheet Agent, hệ thống công ty xuất thẳng) được coi là danh sách mã TVV "chuẩn". Các dòng dưới đây có thể là: TVV đã nghỉ/không còn trong roster hiện tại, mã nhập tay bị gõ sai, hoặc chỉ đơn giản là chưa có dữ liệu daily_sales_tvv cho tháng đó — không chắc chắn là lỗi, cần bạn xem lại.</div>
+        <table id="orphanTable"><thead><tr><th>Mã</th><th>Chuẩn hoá</th><th>Xuất hiện ở</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, collection, getDocs, doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyASY63DlWIkvjybM1enPIpdZkxXJjrStQA",
+  authDomain: "d07-sales-dashboard.firebaseapp.com",
+  projectId: "d07-sales-dashboard",
+  storageBucket: "d07-sales-dashboard.firebasestorage.app",
+  messagingSenderId: "820808715064",
+  appId: "1:820808715064:web:62865b8b03b18b6a670fcd"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+document.getElementById('loginBtn').addEventListener('click', async ()=>{
+  const email = document.getElementById('loginEmail').value.trim();
+  const pw = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  try{ await signInWithEmailAndPassword(auth, email, pw); }
+  catch(e){ errEl.textContent = 'Đăng nhập thất bại: '+(e.code||e.message); }
+});
+onAuthStateChanged(auth, user=>{
+  document.getElementById('loginScreen').style.display = user ? 'none' : 'flex';
+  document.getElementById('appScreen').style.display = user ? 'block' : 'none';
+});
+
+function norm(v){
+  return String(v==null?'':v).trim().replace(/^0+(?=\d)/,'');
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// occ[normKey] = { variants: Set(literal), sources: Set('collection literal') }
+function addOcc(occ, rawVal, sourceLabel){
+  if(rawVal===null || rawVal===undefined || String(rawVal).trim()==='') return;
+  const literal = String(rawVal).trim();
+  const key = norm(literal);
+  if(!occ[key]) occ[key] = { variants:new Set(), sources:new Set() };
+  occ[key].variants.add(literal);
+  occ[key].sources.add(sourceLabel);
+}
+
+document.getElementById('scanBtn').addEventListener('click', runScan);
+
+async function runScan(){
+  const btn = document.getElementById('scanBtn');
+  const statusEl = document.getElementById('status');
+  btn.disabled = true;
+  document.getElementById('results').style.display = 'none';
+  statusEl.textContent = 'Đang đọc daily_sales_tvv...';
+
+  const occAll = {};       // mọi mã, từ mọi nguồn
+  const dailySalesKeys = new Set(); // mã chuẩn hoá có trong daily_sales_tvv (nguồn "chuẩn")
+
+  try{
+    // 1) daily_sales_tvv — agents object keys = AGCode
+    const dsSnaps = await getDocs(collection(db,'daily_sales_tvv'));
+    dsSnaps.forEach(s=>{
+      const agents = (s.data()||{}).agents || {};
+      Object.keys(agents).forEach(code=>{
+        addOcc(occAll, code, `daily_sales_tvv/${s.id}`);
+        dailySalesKeys.add(norm(code));
+      });
+    });
+    statusEl.textContent = `daily_sales_tvv: ${dsSnaps.size} ngày, ${dailySalesKeys.size} mã TVV duy nhất.\nĐang đọc manmark...`;
+
+    // 2) manmark — commits object keys = code
+    const mmSnaps = await getDocs(collection(db,'manmark'));
+    mmSnaps.forEach(s=>{
+      const commits = (s.data()||{}).commits || {};
+      Object.keys(commits).forEach(code=> addOcc(occAll, code, `manmark/${s.id}`));
+    });
+    statusEl.textContent += `\nmanmark: ${mmSnaps.size} tháng.\nĐang đọc reports (Sales Report)...`;
+
+    // 3) reports — person.msdl trong mảng/obj data
+    const repSnaps = await getDocs(collection(db,'reports'));
+    let repPersonCount = 0;
+    repSnaps.forEach(s=>{
+      const raw = (s.data()||{}).data;
+      const arr = Array.isArray(raw) ? raw : (raw && typeof raw==='object' ? Object.values(raw) : []);
+      arr.forEach(p=>{ if(p && p.msdl!=null){ addOcc(occAll, p.msdl, `reports/${s.id}`); repPersonCount++; } });
+    });
+    statusEl.textContent += `\nreports: ${repSnaps.size} tháng, ${repPersonCount} dòng TVV.\nĐang đọc pending_cases...`;
+
+    // 4) pending_cases/main — goneMap values có field agCode
+    const pcSnap = await getDoc(doc(db,'pending_cases','main'));
+    if(pcSnap.exists()){
+      const goneMap = pcSnap.data().goneMap || {};
+      Object.values(goneMap).forEach(c=>{ if(c && c.agCode!=null) addOcc(occAll, c.agCode, 'pending_cases/main (goneMap)'); });
+    }
+
+    statusEl.textContent += `\nHoàn tất. Đang phân tích...`;
+
+    // Phân tích 1: mã có nhiều biến thể
+    const variantRows = Object.entries(occAll)
+      .filter(([k,v])=> v.variants.size>1)
+      .sort((a,b)=> b[1].variants.size - a[1].variants.size);
+
+    // Phân tích 2: mã (không phải từ daily_sales_tvv) không khớp bất kỳ mã chuẩn nào
+    const orphanRows = Object.entries(occAll)
+      .filter(([k,v])=> !dailySalesKeys.has(k))
+      .sort((a,b)=> a[0].localeCompare(b[0]));
+
+    document.getElementById('kpiGrid').innerHTML = `
+      <div class="kpi"><div class="label">Tổng mã duy nhất (đã chuẩn hoá)</div><div class="value">${Object.keys(occAll).length}</div></div>
+      <div class="kpi"><div class="label">Mã có nhiều biến thể format</div><div class="value" style="color:${variantRows.length?'#dc2626':'#16a34a'}">${variantRows.length}</div></div>
+      <div class="kpi"><div class="label">Mã không khớp daily_sales_tvv</div><div class="value" style="color:${orphanRows.length?'#d97706':'#16a34a'}">${orphanRows.length}</div></div>
+      <div class="kpi"><div class="label">Mã chuẩn trong daily_sales_tvv</div><div class="value">${dailySalesKeys.size}</div></div>
+    `;
+
+    const vBody = document.querySelector('#variantTable tbody');
+    vBody.innerHTML = variantRows.length ? variantRows.map(([k,v])=>`
+      <tr><td><code>${esc(k)}</code></td>
+      <td>${Array.from(v.variants).map(x=>`<span class="variant">${esc(x)}</span>`).join('')}</td>
+      <td>${Array.from(v.sources).slice(0,6).map(x=>`<span class="src">${esc(x)}</span>`).join('')}${v.sources.size>6?` <span class="src">+${v.sources.size-6} nữa</span>`:''}</td></tr>
+    `).join('') : `<tr><td colspan="3" class="empty">✓ Không phát hiện mã nào bị lệch định dạng.</td></tr>`;
+
+    const oBody = document.querySelector('#orphanTable tbody');
+    oBody.innerHTML = orphanRows.length ? orphanRows.map(([k,v])=>`
+      <tr><td>${Array.from(v.variants).map(x=>`<span class="variant">${esc(x)}</span>`).join('')}</td>
+      <td><code>${esc(k)}</code></td>
+      <td>${Array.from(v.sources).slice(0,6).map(x=>`<span class="src">${esc(x)}</span>`).join('')}${v.sources.size>6?` <span class="src">+${v.sources.size-6} nữa</span>`:''}</td></tr>
+    `).join('') : `<tr><td colspan="3" class="empty">✓ Mọi mã đều khớp với daily_sales_tvv.</td></tr>`;
+
+    document.getElementById('results').style.display = 'block';
+    statusEl.textContent = 'Hoàn tất quét — kết quả CHỈ ĐỌC, chưa có gì bị thay đổi.';
+  }catch(e){
+    console.error(e);
+    statusEl.textContent = 'Lỗi khi quét: '+e.message+' (kiểm tra đã đăng nhập / có rule đọc các collection này chưa)';
+  }finally{
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>

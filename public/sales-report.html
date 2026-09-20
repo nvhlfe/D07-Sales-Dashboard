@@ -202,9 +202,9 @@
 
   /* Summary cols */
   .col-total { background: #eff6ff; color: #1d4ed8; font-weight: 700; min-width: 72px; text-align: center; }
-  .col-nofee { background: #fff1f2; color: #be123c; font-weight: 700; min-width: 72px; text-align: center; }
+  .col-nofee { background: #fdf2f8; color: #be185d; font-weight: 700; min-width: 72px; text-align: center; } /* = "chưa phí" ~ khái niệm Pipeline, đồng bộ màu hồng với tab TVV Hàng Ngày */
   .col-issued { background: #f0fdf4; color: #15803d; font-weight: 700; min-width: 72px; text-align: center; }
-  .col-paid  { background: #fefce8; color: #a16207; font-weight: 700; min-width: 72px; text-align: center; }
+  .col-paid  { background: #fefce8; color: #a16207; font-weight: 700; min-width: 72px; text-align: center; } /* = "có phí chưa PH" ~ khái niệm Pending, đồng bộ màu vàng cam */
 
   /* Sun/Sat header highlight */
   th.day-sun { background: #fee2e2 !important; color: #dc2626 !important; }
@@ -617,7 +617,10 @@ function renderTable() {
         <input type="text" value="${esc(person.msdl)}" onchange="updateField(${pi},'msdl',this.value)" class="editable-input" />
       </td>
       <td class="col-name" style="border:1px solid #edf0f9;padding:3px 6px">
-        <input type="text" value="${esc(person.name)}" onchange="updateField(${pi},'name',this.value)" class="editable-input" style="font-weight:600" />
+        <div style="display:flex;align-items:center;gap:4px">
+          <input type="text" value="${esc(person.name)}" onchange="updateField(${pi},'name',this.value)" class="editable-input" style="font-weight:600" />
+          <a href="/tvv-profile.html?code=${encodeURIComponent(person.msdl)}" target="_blank" title="Mở Hồ sơ TVV đầy đủ" style="text-decoration:none;flex-shrink:0">🔗</a>
+        </div>
       </td>`;
 
     for(let d = 1; d <= days; d++) {

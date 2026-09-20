@@ -471,7 +471,7 @@ function render(){
     const isNew = priorDate && !priorKeys.has(c.key);
     return `<tr class="${isNew?'is-new':''}">
       <td>${isNew?'<span class="tag new">MỚI</span>':''}</td>
-      <td><div>${c.agName||''}</div><div class="mono" style="color:#9a8f83">${c.unitCode||''} / ${c.agCode||''}</div></td>
+      <td><div>${c.agName||''} <a href="/tvv-profile.html?code=${encodeURIComponent(c.agCode)}" target="_blank" title="Mở Hồ sơ TVV đầy đủ" style="text-decoration:none">🔗</a></div><div class="mono" style="color:#9a8f83">${c.unitCode||''} / ${c.agCode||''}</div></td>
       <td class="mono">${c.proposalNum||''}</td>
       <td class="mono">${c.policyNum||''}</td>
       <td class="mono">${fmtProposalDate(c.proposalDate)}</td>

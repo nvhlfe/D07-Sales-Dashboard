@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hồ sơ TVV</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --blue:#1d4ed8; --blue-light:#eff6ff; --purple:#7c3aed; --purple-light:#f5f3ff;
+    --green:#059669; --green-light:#ecfdf5; --amber:#d97706; --amber-light:#fef3c7;
+    --orange:#ea580c; --pink:#db2777; --gray:#64748b; --border:#e2e8f0; --bg:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:#0f172a}
+  #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .loginBox{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.08);width:320px}
+  .loginBox h1{font-size:16px;margin:0 0 20px;color:var(--blue)}
+  .loginBox input{width:100%;padding:10px;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;font-size:14px}
+  .loginBox button{width:100%;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-weight:600}
+  #loginError{color:#dc2626;font-size:13px;margin-top:8px;min-height:16px}
+  #appScreen{display:none}
+  header{background:#fff;border-bottom:1px solid var(--border);padding:16px 24px;position:sticky;top:0;z-index:20}
+  .hrow{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px}
+  h1{font-size:19px;margin:0}
+  .sub{font-size:13px;color:var(--gray);margin-top:3px}
+  .seg-Diamond{color:#0ea5e9;font-weight:600}.seg-Platinum{color:#7c3aed;font-weight:600}.seg-Gold{color:#d97706;font-weight:600}
+  main{max-width:1100px;margin:0 auto;padding:20px 24px 60px}
+  .card{background:#fff;border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:18px}
+  .card h2{font-size:14px;margin:0 0 12px;color:#1e293b}
+  .row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+  .field label{font-size:12px;color:var(--gray);font-weight:600;display:block;margin-bottom:4px}
+  .field select{padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+  .kpi{background:#fff;border:1px solid var(--border);border-radius:10px;padding:12px 14px;border-left:4px solid #cbd5e1}
+  .kpi[data-color="target"]{border-left-color:#64748b}
+  .kpi[data-color="actual"]{border-left-color:var(--blue)}
+  .kpi[data-color="case"]{border-left-color:var(--blue)}
+  .kpi[data-color="ip"]{border-left-color:var(--purple)}
+  .kpi[data-color="fyp"]{border-left-color:var(--green)}
+  .kpi[data-color="pending"]{border-left-color:var(--amber)}
+  .kpi .label{font-size:12px;color:var(--gray)}
+  .kpi .value{font-size:19px;font-weight:700}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:800px){.grid2{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--border);text-align:left}
+  th{background:#f1f5f9;color:#334155;font-size:12px}
+  .empty{padding:18px;text-align:center;color:var(--gray);font-size:13px}
+  .badge{display:inline-block;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600}
+  .badge.pending{background:var(--amber-light);color:#92400e}
+  .badge.pipeline{background:#fdf2f8;color:var(--pink)}
+  .note{font-size:12px;color:var(--gray);background:#f8fafc;border:1px dashed var(--border);border-radius:8px;padding:10px 12px;margin-top:8px}
+  a.linkback{color:var(--blue);text-decoration:none;font-size:13px}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="loginBox">
+    <h1>🔒 Đăng nhập - Hồ sơ TVV</h1>
+    <input type="email" id="loginEmail" placeholder="Email">
+    <input type="password" id="loginPassword" placeholder="Mật khẩu">
+    <button id="loginBtn">Đăng nhập</button>
+    <div id="loginError"></div>
+  </div>
+</div>
+
+<div id="appScreen">
+  <header>
+    <div class="hrow">
+      <div>
+        <h1 id="tvvName">—</h1>
+        <div class="sub"><span id="tvvUnit"></span> · Mã TVV <b id="tvvCode"></b> · <span id="tvvSeg"></span></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Tháng</label><select id="monthSelect"></select></div>
+        <div class="field"><label>Năm</label><select id="yearSelect"></select></div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="noDataNote"></div>
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="grid2">
+      <div class="card">
+        <h2>Cam kết vs Thực đạt theo tuần (FYP)</h2>
+        <canvas id="chartWeekly" height="220"></canvas>
+      </div>
+      <div class="card">
+        <h2>Thực đạt FYP theo tháng (toàn bộ lịch sử daily_sales_tvv)</h2>
+        <canvas id="chartMonthly" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🕒 Hồ sơ đang Pending <span id="pendingAsOf" style="font-weight:400;color:#94a3b8;font-size:12px"></span></h2>
+      <table><thead><tr><th>Số hồ sơ</th><th>Sản phẩm</th><th>Ngày nộp</th><th>APE (tr)</th><th>PO</th><th>Trạng thái</th></tr></thead>
+        <tbody id="pendingBody"></tbody>
+      </table>
+      <div class="note">Trạng thái xử lý (IF/PO/WD...) được đánh dấu ở tab Pending Cases — <a class="linkback" href="/pending-cases.html" target="_blank">mở tab Pending →</a></div>
+    </div>
+
+    <div class="card">
+      <h2>💤 Hồ sơ Pipeline (chưa phí) <span id="pipelineAsOf" style="font-weight:400;color:#94a3b8;font-size:12px"></span></h2>
+      <table><thead><tr><th>Số hồ sơ</th><th>Sản phẩm</th><th>Ngày nộp</th><th>APE (tr)</th><th>PO</th></tr></thead>
+        <tbody id="pipelineBody"></tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      Trang này gộp dữ liệu từ 3 nguồn: <b>ManMark</b> (cam kết theo tuần/tháng), <b>daily_sales_tvv</b> — nguồn của tab TVV Hàng Ngày (Case/IP/FYP/FYC, Pending, Pipeline),
+      và <b>Pending Cases</b> (trạng thái xử lý hồ sơ). Chi tiết hồ sơ theo ngày (Sales Report) vẫn xem riêng ở tab đó vì đây là dữ liệu nhập tay hàng ngày, chi tiết hơn mức tổng hợp ở đây.
+    </div>
+  </main>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, doc, getDoc, collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyASY63DlWIkvjybM1enPIpdZkxXJjrStQA",
+  authDomain: "d07-sales-dashboard.firebaseapp.com",
+  projectId: "d07-sales-dashboard",
+  storageBucket: "d07-sales-dashboard.firebasestorage.app",
+  messagingSenderId: "820808715064",
+  appId: "1:820808715064:web:62865b8b03b18b6a670fcd"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const params = new URLSearchParams(location.search);
+const code = params.get('code') || '';
+const now = new Date();
+let selYear = parseInt(params.get('year')) || now.getFullYear();
+let selMonth = parseInt(params.get('month')) || (now.getMonth()+1);
+
+document.getElementById('loginBtn').addEventListener('click', async ()=>{
+  const email = document.getElementById('loginEmail').value.trim();
+  const pw = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  try{ await signInWithEmailAndPassword(auth, email, pw); }
+  catch(e){ errEl.textContent = 'Đăng nhập thất bại: '+(e.code||e.message); }
+});
+
+onAuthStateChanged(auth, user=>{
+  if(user){
+    document.getElementById('loginScreen').style.display='none';
+    document.getElementById('appScreen').style.display='block';
+    if(!code){
+      document.getElementById('tvvName').textContent = 'Thiếu mã TVV';
+      document.getElementById('noDataNote').innerHTML = `<div class="note">URL cần có tham số ?code=MÃ_TVV (mở từ nút "🔗 Hồ sơ TVV" ở các tab khác).</div>`;
+      return;
+    }
+    document.getElementById('tvvCode').textContent = code;
+    init();
+  } else {
+    document.getElementById('loginScreen').style.display='flex';
+    document.getElementById('appScreen').style.display='none';
+  }
+});
+
+function num(v){ const n=Number(v); return isNaN(n)?0:n; }
+function fmt(n){ if(n===undefined||n===null) return '0'; return Math.round(Number(n)).toLocaleString('vi-VN'); }
+function daysInMonth(y,m){ return new Date(y,m,0).getDate(); }
+function defaultWeeks(y,m){
+  const total = daysInMonth(y,m);
+  return [
+    {label:'Tuần 1', start:1, end:7}, {label:'Tuần 2', start:8, end:14},
+    {label:'Tuần 3', start:15, end:21}, {label:'Tuần 4', start:22, end:total},
+  ];
+}
+
+let allDates = [];             // toàn bộ ngày có trong daily_sales_tvv, tăng dần
+let agentByDate = {};          // { date: {unit,agName,agSeg,fyp,fyc,caseNet,ipNet,caseSub,ipSub} } — chỉ của `code`
+let pendingRowsLatest = [];
+let pipelineRowsLatest = [];
+let latestDate = '';
+let pcStatuses = {};
+let chartWeekly=null, chartMonthly=null;
+
+const monthSelect = document.getElementById('monthSelect');
+const yearSelect = document.getElementById('yearSelect');
+function initSelectors(){
+  for(let m=1;m<=12;m++) monthSelect.innerHTML += `<option value="${m}" ${m===selMonth?'selected':''}>Tháng ${m}</option>`;
+  for(let y=now.getFullYear()-1;y<=now.getFullYear()+1;y++) yearSelect.innerHTML += `<option value="${y}" ${y===selYear?'selected':''}>${y}</option>`;
+  monthSelect.addEventListener('change', ()=>{ selMonth=parseInt(monthSelect.value); loadManmarkAndRender(); });
+  yearSelect.addEventListener('change', ()=>{ selYear=parseInt(yearSelect.value); loadManmarkAndRender(); });
+}
+
+async function init(){
+  initSelectors();
+  await loadDailySalesHistory();
+  await loadPendingCasesStatuses();
+  await loadManmarkAndRender();
+}
+
+async function loadDailySalesHistory(){
+  try{
+    const snaps = await getDocs(collection(db,'daily_sales_tvv'));
+    allDates = []; agentByDate = {};
+    let latestPendingSrc=[], latestPipelineSrc=[];
+    const docsSorted = snaps.docs.map(d=>({id:d.id, data:d.data()})).sort((a,b)=>a.id.localeCompare(b.id));
+    docsSorted.forEach(d=>{
+      allDates.push(d.id);
+      const a = (d.data.agents||{})[code];
+      if(a) agentByDate[d.id] = a;
+    });
+    latestDate = allDates[allDates.length-1] || '';
+    const latestDoc = docsSorted.find(d=>d.id===latestDate);
+    if(latestDoc){
+      latestPendingSrc = (latestDoc.data.pendingRows||[]).filter(r=>String(r.agCode)===String(code));
+      latestPipelineSrc = (latestDoc.data.pipelineRows||[]).filter(r=>String(r.agCode)===String(code));
+    }
+    pendingRowsLatest = latestPendingSrc;
+    pipelineRowsLatest = latestPipelineSrc;
+
+    const latestInfo = agentByDate[latestDate];
+    document.getElementById('tvvName').textContent = latestInfo?.agName || '(chưa rõ tên)';
+    document.getElementById('tvvUnit').textContent = latestInfo ? `Unit ${latestInfo.unit||'—'}` : '';
+    const segEl = document.getElementById('tvvSeg');
+    segEl.textContent = latestInfo?.agSeg || '';
+    segEl.className = 'seg-'+(latestInfo?.agSeg||'');
+    document.getElementById('pendingAsOf').textContent = latestDate ? `(cập nhật ngày ${latestDate})` : '';
+    document.getElementById('pipelineAsOf').textContent = latestDate ? `(cập nhật ngày ${latestDate})` : '';
+    if(!allDates.length){
+      document.getElementById('noDataNote').innerHTML = `<div class="note">Chưa có dữ liệu trong daily_sales_tvv. Hãy upload file Daily Sales ở tab TVV Hàng Ngày.</div>`;
+    }
+  }catch(e){
+    console.error('daily_sales_tvv read error:', e);
+    document.getElementById('noDataNote').innerHTML = `<div class="note" style="color:#dc2626">Không đọc được daily_sales_tvv: ${e.message}</div>`;
+  }
+}
+
+async function loadPendingCasesStatuses(){
+  try{
+    const snap = await getDoc(doc(db,'pending_cases','main'));
+    pcStatuses = snap.exists() ? (snap.data().statuses||{}) : {};
+  }catch(e){ console.error('pending_cases read error:', e); pcStatuses = {}; }
+}
+
+// Mức tăng (delta) mỗi tuần trong tháng đang chọn, suy ra từ số lũy kế daily_sales_tvv
+function weeklyDeltasForMonth(weeks){
+  const res = weeks.map(()=>({fyp:0,fyc:0,caseNet:0,ipNet:0}));
+  const ym = `${selYear}-${String(selMonth).padStart(2,'0')}`;
+  const datesInMonth = allDates.filter(d=>d.startsWith(ym));
+  let prev = {fyp:0,fyc:0,caseNet:0,ipNet:0};
+  datesInMonth.forEach(d=>{
+    const day = parseInt(d.slice(8,10));
+    const a = agentByDate[d];
+    const cur = a ? {fyp:num(a.fyp),fyc:num(a.fyc),caseNet:num(a.caseNet),ipNet:num(a.ipNet)} : prev;
+    const wIdx = weeks.findIndex(w=>day>=w.start && day<=w.end);
+    if(wIdx!==-1){
+      res[wIdx].fyp += cur.fyp-prev.fyp; res[wIdx].fyc += cur.fyc-prev.fyc;
+      res[wIdx].caseNet += cur.caseNet-prev.caseNet; res[wIdx].ipNet += cur.ipNet-prev.ipNet;
+    }
+    prev = cur;
+  });
+  return res;
+}
+function latestInMonth(){
+  const ym = `${selYear}-${String(selMonth).padStart(2,'0')}`;
+  const datesInMonth = allDates.filter(d=>d.startsWith(ym));
+  for(let i=datesInMonth.length-1;i>=0;i--){ const a=agentByDate[datesInMonth[i]]; if(a) return a; }
+  return null;
+}
+function monthlySeries(){
+  // với mỗi tháng có dữ liệu, lấy giá trị lũy kế NGÀY CUỐI của tháng đó = tổng tháng
+  const byMonth = {};
+  allDates.forEach(d=>{ const ym=d.slice(0,7); byMonth[ym]=d; }); // ngày cuối cùng (allDates đã sort tăng dần)
+  const months = Object.keys(byMonth).sort();
+  return months.map(ym=>({ ym, fyp: num(agentByDate[byMonth[ym]]?.fyp) }));
+}
+
+async function loadManmarkAndRender(){
+  let commit=null, weeks=defaultWeeks(selYear,selMonth);
+  try{
+    const mmKey = `${selYear}-${selMonth}`;
+    const snap = await getDoc(doc(db,'manmark',mmKey));
+    if(snap.exists()){
+      const d = snap.data();
+      if(d.weeks && d.weeks.length) weeks = d.weeks;
+      commit = (d.commits||{})[code] || null;
+    }
+  }catch(e){ console.error('manmark read error:', e); }
+
+  const offWeeks = weeklyDeltasForMonth(weeks);
+  const latest = latestInMonth() || {fyp:0,fyc:0,caseNet:0,ipNet:0,caseSub:0,ipSub:0};
+  const monthTarget = commit?.monthTarget || 0;
+  const monthActual = num(latest.fyp);
+  const pct = monthTarget ? Math.round(monthActual/monthTarget*100) : 0;
+
+  const pendingMine = pendingRowsLatest.filter(r=>pcStatuses[String(r.proposalNum)]!=='WD');
+  const pipelineMine = pipelineRowsLatest;
+  const pendingApe = pendingMine.reduce((s,r)=>s+num(r.ape),0);
+  const pipelineApe = pipelineMine.reduce((s,r)=>s+num(r.ape),0);
+
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi" data-color="target"><div class="label">Cam kết tháng (FYP)</div><div class="value">${fmt(monthTarget)}</div></div>
+    <div class="kpi" data-color="actual"><div class="label">Thực đạt tháng (FYP)</div><div class="value">${fmt(monthActual)}</div></div>
+    <div class="kpi" data-color="target"><div class="label">% Đạt</div><div class="value" style="color:${pct>=100?'#0f9d58':pct>=70?'#b45309':'#c0243c'}">${pct}%</div></div>
+    <div class="kpi" data-color="case"><div class="label">Case Net / Sub</div><div class="value">${fmt(latest.caseNet)} / ${fmt(latest.caseSub)}</div></div>
+    <div class="kpi" data-color="ip"><div class="label">IP Net / Sub</div><div class="value">${fmt(latest.ipNet)} / ${fmt(latest.ipSub)}</div></div>
+    <div class="kpi" data-color="fyp"><div class="label">FYC tháng</div><div class="value">${fmt(latest.fyc)}</div></div>
+    <div class="kpi" data-color="pending"><div class="label">Pending + Pipeline (APE)</div><div class="value">${fmt(pendingApe+pipelineApe)}</div></div>
+  `;
+
+  // Chart tuần
+  const ctxW = document.getElementById('chartWeekly').getContext('2d');
+  if(chartWeekly) chartWeekly.destroy();
+  chartWeekly = new Chart(ctxW, {
+    type:'bar',
+    data:{ labels: weeks.map(w=>w.label), datasets:[
+      { label:'Cam kết', data: weeks.map((w,i)=>commit?.weekly?.[i]?.fyp||0), backgroundColor:'#c7d2fe' },
+      { label:'Thực đạt', data: offWeeks.map(w=>w.fyp), backgroundColor:'#1d4ed8' },
+    ]},
+    options:{ responsive:true, plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} }
+  });
+
+  // Chart tháng
+  const series = monthlySeries();
+  const ctxM = document.getElementById('chartMonthly').getContext('2d');
+  if(chartMonthly) chartMonthly.destroy();
+  chartMonthly = new Chart(ctxM, {
+    type:'line',
+    data:{ labels: series.map(s=>s.ym), datasets:[
+      { label:'Thực đạt FYP', data: series.map(s=>s.fyp), borderColor:'#1d4ed8', backgroundColor:'#eff6ff', tension:.25, fill:true },
+    ]},
+    options:{ responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+  });
+
+  // Bảng Pending / Pipeline
+  document.getElementById('pendingBody').innerHTML = pendingRowsLatest.length ? pendingRowsLatest.map(r=>{
+    const st = pcStatuses[String(r.proposalNum)];
+    return `<tr><td>${r.proposalNum}</td><td>${r.product||''}</td><td>${r.proposalDate||''}</td><td>${fmt(r.ape)}</td><td>${r.poName||''}</td>
+      <td>${st?`<span class="badge pending">${st}</span>`:'—'}</td></tr>`;
+  }).join('') : `<tr><td colspan="6" class="empty">Không có hồ sơ Pending</td></tr>`;
+
+  document.getElementById('pipelineBody').innerHTML = pipelineRowsLatest.length ? pipelineRowsLatest.map(r=>`
+    <tr><td>${r.proposalNum}</td><td>${r.product||''}</td><td>${r.proposalDate||''}</td><td>${fmt(r.ape)}</td><td>${r.poName||''}</td></tr>
+  `).join('') : `<tr><td colspan="5" class="empty">Không có hồ sơ Pipeline</td></tr>`;
+}
+</script>
+</body>
+</html>

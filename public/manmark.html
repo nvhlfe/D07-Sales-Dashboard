@@ -56,6 +56,30 @@
   .filter-input{width:100%;min-width:44px;border:1px solid #d7deef;border-radius:5px;padding:2px 4px;font-size:10px;
     font-weight:400;text-align:center;background:#fff;color:#334}
   .filter-input:focus{border-color:#4361ee;outline:none}
+  /* Nhóm màu chỉ số — đồng bộ với tab TVV Hàng Ngày: Cam kết=trung tính, Thực đạt=xanh dương, Pending=vàng cam, Dự báo=xanh lá */
+  th.grp-target{background:#f1f5f9!important;color:#475569!important}
+  th.grp-actual{background:#dbeafe!important;color:#1e40af!important}
+  th.grp-pending{background:#fef3c7!important;color:#92400e!important}
+  th.grp-forecast{background:#d1fae5!important;color:#065f46!important}
+  td.grp-target{background:#f8fafc}
+  td.grp-actual{background:#eff6ff}
+  td.grp-pending{background:#fffbeb}
+  td.grp-forecast{background:#ecfdf5}
+  .kpi-chip{border-left:4px solid #cbd5e1}
+  .kpi-chip[data-color="target"]{border-left-color:#64748b}
+  .kpi-chip[data-color="actual"]{border-left-color:#2563eb}
+  .kpi-chip[data-color="pending"]{border-left-color:#d97706}
+  .kpi-chip[data-color="forecast"]{border-left-color:#059669}
+  /* Dropdown checkbox chọn nhiều — đồng bộ với tab TVV Hàng Ngày */
+  .ddown{position:relative;min-width:60px}
+  .ddown-btn{width:100%;text-align:left;padding:2px 16px 2px 4px;border:1px solid #d7deef;border-radius:5px;background:#fff;font-size:10px;cursor:pointer;position:relative;color:#334}
+  .ddown-btn::after{content:"▾";position:absolute;right:4px;top:50%;transform:translateY(-50%);color:#94a3b8;font-size:9px}
+  .ddown-panel{display:none;position:absolute;top:calc(100% + 3px);left:0;background:#fff;border:1px solid #d7deef;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.14);padding:6px;max-height:240px;overflow:auto;z-index:80;min-width:170px;white-space:nowrap}
+  .ddown-panel.open{display:block}
+  .ddown-item{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:6px;font-size:11.5px;cursor:pointer;font-weight:400;text-align:left}
+  .ddown-item:hover{background:#f1f5f9}
+  .ddown-item input{margin:0}
+  .ddown-all{border-bottom:1px solid #edf0f9;margin-bottom:4px;padding-bottom:7px}
   th.sortable{cursor:pointer;user-select:none}
   th.sortable:hover{background:#dfe6ff!important}
   .sort-arrow{color:#7c3aed;margin-left:2px}
@@ -164,6 +188,7 @@
     <button class="close-x" onclick="closeDetailModal()">✕</button>
     <h3 id="detailTitle" style="margin:0 0 4px;font-size:15px;font-weight:800"></h3>
     <div id="detailSub" style="font-size:11px;color:#8896aa"></div>
+    <a id="detailProfileLink" href="#" target="_blank" style="font-size:11px;color:#4361ee;text-decoration:none;display:inline-block;margin-top:4px">🔗 Mở Hồ sơ TVV đầy đủ (tổng hợp mọi tab)</a>
     <div id="detailTrendChip" style="margin-top:8px"></div>
     <div class="detail-grid">
       <div class="detail-chart-box">
@@ -709,7 +734,17 @@ function renderHeader(){
   const rowsForOptions = buildRows();
   const unitOptions = Array.from(new Set(rowsForOptions.map(r=>r.unit).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'vi'));
   const segmentOptions = Array.from(new Set(rowsForOptions.map(r=>r.segment).filter(Boolean))).sort((a,b)=>a.localeCompare(b,'vi'));
-  const selectOpts = (opts, current) => `<option value="">Tất cả</option>` + opts.map(o=>`<option value="${escAttr(o)}" ${current===o?'selected':''}>${escAttr(o)}</option>`).join('');
+  const ddownHtml = (colId, opts, allLabel) => {
+    const selected = filterState[colId] || [];
+    const btnLabel = !selected.length ? `Tất cả` : selected.length<=2 ? selected.join(', ') : `${selected.length} đã chọn`;
+    return `<div class="ddown">
+      <button type="button" class="ddown-btn" data-ddown="${colId}">${escAttr(btnLabel)}</button>
+      <div class="ddown-panel" id="ddownPanel_${colId}">
+        <label class="ddown-item ddown-all"><input type="checkbox" class="ddown-selectall" data-col="${colId}" ${opts.length && selected.length===opts.length?'checked':''}><b>Chọn tất cả</b></label>
+        ${opts.map(o=>`<label class="ddown-item"><input type="checkbox" class="ddown-cb" data-col="${colId}" value="${escAttr(o)}" ${selected.includes(o)?'checked':''}> ${escAttr(o)}</label>`).join('') || `<div style="padding:4px;color:#9aa4ba;font-size:11px">(chưa có ${allLabel})</div>`}
+      </div>
+    </div>`;
+  };
 
   let thead = `<tr>
     <th class="col-sticky" rowspan="3" style="min-width:26px">STT</th>
@@ -718,36 +753,85 @@ function renderHeader(){
     <th class="col-sticky col-name sortable" rowspan="3" onclick="toggleSort('name')">Tên TVV${arrow('name')}</th>
     <th class="sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('segment')">AG Segment${arrow('segment')}</th>
     <th class="sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('monthTarget')">Cam kết tháng${arrow('monthTarget')}</th>
-    <th class="sortable" rowspan="3" style="min-width:100px" onclick="toggleSort('monthActual')">Thực đạt tháng${arrow('monthActual')}</th>
-    <th class="sortable" rowspan="3" style="min-width:80px" onclick="toggleSort('pending')" title="Tổng APE hồ sơ đang chờ xử lý (chưa PH, chưa rút)">Pending${arrow('pending')}</th>
-    <th class="sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('forecast')" title="Đã chắc + 50% tiềm năng + 30% pending">Dự báo tháng${arrow('forecast')}</th>`;
+    <th class="grp-actual sortable" rowspan="3" style="min-width:100px" onclick="toggleSort('monthActual')">Thực đạt tháng${arrow('monthActual')}</th>
+    <th class="grp-pending sortable" rowspan="3" style="min-width:80px" onclick="toggleSort('pending')" title="Tổng APE hồ sơ đang chờ xử lý (chưa PH, chưa rút)">Pending${arrow('pending')}</th>
+    <th class="grp-forecast sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('forecast')" title="Đã chắc + 50% tiềm năng + 30% pending">Dự báo tháng${arrow('forecast')}</th>`;
   weeks.forEach(w=>{ thead += `<th class="week-head" colspan="5">${escAttr(w.label)} (${w.start}–${w.end})</th>`; });
   thead += `<th rowspan="3" style="min-width:34px">Xoá</th></tr><tr>`;
   weeks.forEach((w,wi)=>{
     ['ckfyp','tdfyp','ckhs','tdhs','note'].forEach(f=>{
       const id = `w${wi}_${f}`;
       const lbl = {ckfyp:'CK FYP', tdfyp:'TĐ FYP', ckhs:'CK HS', tdhs:'TĐ HS', note:'Ghi chú'}[f];
-      thead += `<th class="week-head sortable" onclick="toggleSort('${id}')">${lbl}${arrow(id)}</th>`;
+      const grp = (f==='tdfyp'||f==='tdhs') ? 'grp-actual' : '';
+      thead += `<th class="week-head sortable ${grp}" onclick="toggleSort('${id}')">${lbl}${arrow(id)}</th>`;
     });
   });
   thead += `</tr><tr>
-    <th class="col-sticky"><select class="filter-input" onchange="onFilterInput('unit',this.value)">${selectOpts(unitOptions, filterState.unit)}</select></th>
+    <th class="col-sticky">${ddownHtml('unit', unitOptions, 'Unit')}</th>
     <th class="col-sticky"><input class="filter-input" oninput="onFilterInput('code',this.value)" value="${escAttr(filterState.code)}"/></th>
     <th class="col-sticky"><input class="filter-input" oninput="onFilterInput('name',this.value)" value="${escAttr(filterState.name)}"/></th>
-    <th><select class="filter-input" onchange="onFilterInput('segment',this.value)">${selectOpts(segmentOptions, filterState.segment)}</select></th>
+    <th>${ddownHtml('segment', segmentOptions, 'hạng')}</th>
     <th><input class="filter-input" oninput="onFilterInput('monthTarget',this.value)" value="${escAttr(filterState.monthTarget)}"/></th>
-    <th><input class="filter-input" oninput="onFilterInput('monthActual',this.value)" value="${escAttr(filterState.monthActual)}"/></th>
-    <th><input class="filter-input" oninput="onFilterInput('pending',this.value)" value="${escAttr(filterState.pending)}"/></th>
-    <th><input class="filter-input" oninput="onFilterInput('forecast',this.value)" value="${escAttr(filterState.forecast)}"/></th>`;
+    <th class="grp-actual"><input class="filter-input" oninput="onFilterInput('monthActual',this.value)" value="${escAttr(filterState.monthActual)}"/></th>
+    <th class="grp-pending"><input class="filter-input" oninput="onFilterInput('pending',this.value)" value="${escAttr(filterState.pending)}"/></th>
+    <th class="grp-forecast"><input class="filter-input" oninput="onFilterInput('forecast',this.value)" value="${escAttr(filterState.forecast)}"/></th>`;
   weeks.forEach((w,wi)=>{
     ['ckfyp','tdfyp','ckhs','tdhs','note'].forEach(f=>{
       const id = `w${wi}_${f}`;
-      thead += `<th class="week-head"><input class="filter-input" oninput="onFilterInput('${id}',this.value)" value="${escAttr(filterState[id])}"/></th>`;
+      const grp = (f==='tdfyp'||f==='tdhs') ? 'grp-actual' : '';
+      thead += `<th class="week-head ${grp}"><input class="filter-input" oninput="onFilterInput('${id}',this.value)" value="${escAttr(filterState[id])}"/></th>`;
     });
   });
   thead += `</tr>`;
   document.getElementById('tableHead').innerHTML = thead;
+  wireDdowns();
 }
+
+function wireDdowns(){
+  document.querySelectorAll('.ddown-btn[data-ddown]').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      e.stopPropagation();
+      const panel = document.getElementById('ddownPanel_'+btn.dataset.ddown);
+      document.querySelectorAll('.ddown-panel.open').forEach(p=>{ if(p!==panel) p.classList.remove('open'); });
+      panel.classList.toggle('open');
+    });
+  });
+  document.querySelectorAll('.ddown-cb').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const col = cb.dataset.col;
+      const arr = filterState[col] || (filterState[col]=[]);
+      if(cb.checked){ if(!arr.includes(cb.value)) arr.push(cb.value); }
+      else { const idx=arr.indexOf(cb.value); if(idx>-1) arr.splice(idx,1); }
+      const panel = document.getElementById('ddownPanel_'+col);
+      const allCbs = panel.querySelectorAll('.ddown-cb');
+      panel.querySelector('.ddown-selectall').checked = arr.length===allCbs.length;
+      updateDdownButtonLabel(col);
+      renderBody();
+    });
+  });
+  document.querySelectorAll('.ddown-selectall').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const col = cb.dataset.col;
+      const panel = document.getElementById('ddownPanel_'+col);
+      const cbs = panel.querySelectorAll('.ddown-cb');
+      cbs.forEach(c=>{ c.checked = cb.checked; });
+      filterState[col] = cb.checked ? Array.from(cbs).map(c=>c.value) : [];
+      updateDdownButtonLabel(col);
+      renderBody();
+    });
+  });
+}
+function updateDdownButtonLabel(col){
+  const btn = document.querySelector(`.ddown-btn[data-ddown="${col}"]`);
+  if(!btn) return;
+  const selected = filterState[col]||[];
+  btn.textContent = !selected.length ? 'Tất cả' : selected.length<=2 ? selected.join(', ') : `${selected.length} đã chọn`;
+}
+document.addEventListener('click', e=>{
+  document.querySelectorAll('.ddown-panel.open').forEach(p=>{
+    if(!p.contains(e.target) && p.previousElementSibling!==e.target) p.classList.remove('open');
+  });
+});
 
 // ── Compute actuals from reportData ──
 function findPersonByCode(code){
@@ -959,9 +1043,14 @@ function isNumericCol(colId){ return colId!=='unit' && colId!=='segment' && colI
 function applyFiltersSort(rows){
   let out = rows;
   Object.keys(filterState).forEach(colId=>{
-    const f = (filterState[colId]||'').trim().toLowerCase();
-    if(!f) return;
-    out = out.filter(r=>String(getColValue(r,colId) ?? '').toLowerCase().includes(f));
+    const f = filterState[colId];
+    if(colId==='unit' || colId==='segment'){
+      if(Array.isArray(f) && f.length) out = out.filter(r=>f.includes(getColValue(r,colId)));
+      return;
+    }
+    const fs = (f||'').trim().toLowerCase();
+    if(!fs) return;
+    out = out.filter(r=>String(getColValue(r,colId) ?? '').toLowerCase().includes(fs));
   });
   const col = sortState.col;
   if(col){
@@ -1002,11 +1091,11 @@ function renderBody(){
       <td class="col-sticky col-name"><span class="name-link" onclick="openTvvDetail('${row.code}')">${escAttr(row.name)}</span>${row.isNew?'<span class="new-badge">Mới</span>':''}${badges}</td>
       <td><input class="cell-edit" type="text" style="width:76px;text-align:left" value="${escAttr(row.segment)}" placeholder="—" onchange="updateCommitSegment('${row.code}',this.value)"/></td>
       <td><input class="cell-edit" type="number" value="${row.monthTarget||''}" onchange="updateCommitMonth('${row.code}',this.value)"/></td>
-      <td class="actual-cell ${statusClass(row.monthActual,row.monthTarget)}">${fmt(row.monthActual)}
+      <td class="actual-cell grp-actual ${statusClass(row.monthActual,row.monthTarget)}">${fmt(row.monthActual)}
         <div class="breakdown"><span class="confirmed">${fmt(row.monthConfirmed)} chắc</span> · <span class="potential">${fmt(row.monthPotential)} TN</span></div>
       </td>
-      <td class="pending-cell">${fmt(row.pending.value)}${row.pending.count?`<div class="breakdown">${row.pending.count} hồ sơ</div>`:''}</td>
-      <td class="forecast-cell ${statusClass(row.forecast,row.monthTarget)}" title="${escAttr(convTitle)}">${fmt(Math.round(row.forecastMid))}
+      <td class="pending-cell grp-pending">${fmt(row.pending.value)}${row.pending.count?`<div class="breakdown">${row.pending.count} hồ sơ</div>`:''}</td>
+      <td class="forecast-cell grp-forecast ${statusClass(row.forecast,row.monthTarget)}" title="${escAttr(convTitle)}">${fmt(Math.round(row.forecastMid))}
         <div class="breakdown">Thấp ${fmt(Math.round(row.forecastLow))} · Cao ${fmt(Math.round(row.forecastHigh))}</div>
       </td>`;
     row.weeks.forEach((wd,wi)=>{
@@ -1014,11 +1103,11 @@ function renderBody(){
       weekTotals[wi].ckHs += wd.ckhs; weekTotals[wi].tdHs += wd.tdhs;
       tbody += `
         <td><input class="cell-edit" type="number" value="${wd.ckfyp||''}" onchange="updateCommitWeek('${row.code}',${wi},'fyp',this.value)"/></td>
-        <td class="actual-cell ${statusClass(wd.tdfyp,wd.ckfyp)}">${fmt(wd.tdfyp)}
+        <td class="actual-cell grp-actual ${statusClass(wd.tdfyp,wd.ckfyp)}">${fmt(wd.tdfyp)}
           ${wd.tdfyp?`<div class="breakdown"><span class="confirmed">${fmt(wd.confirmedFyp)}</span>/<span class="potential">${fmt(wd.potentialFyp)}</span></div>`:''}
         </td>
         <td><input class="cell-edit" type="number" value="${wd.ckhs||''}" onchange="updateCommitWeek('${row.code}',${wi},'hs',this.value)"/></td>
-        <td class="actual-cell ${statusClass(wd.tdhs,wd.ckhs)}">${fmt(wd.tdhs)}</td>
+        <td class="actual-cell grp-actual ${statusClass(wd.tdhs,wd.ckhs)}">${fmt(wd.tdhs)}</td>
         <td><input class="note-edit" type="text" value="${escAttr(wd.note)}" placeholder="Ghi chú..." onchange="updateNote('${row.code}',${wi},this.value)"/></td>`;
     });
     tbody += `<td><button class="del-btn" title="Xoá TVV khỏi ManMark" onclick="deleteRow('${row.code}')">🗑</button></td></tr>`;
@@ -1059,11 +1148,11 @@ function renderKpi(count, commit, actual, forecast){
     ? `<span style="font-size:10px;font-weight:700;color:#065f46;background:#d1fae5;border-radius:20px;padding:2px 8px;margin-left:6px;">CHÍNH THỨC</span>`
     : `<span style="font-size:10px;font-weight:700;color:#92400e;background:#fef3c7;border-radius:20px;padding:2px 8px;margin-left:6px;">NHẬP TAY</span>`;
   document.getElementById('kpiBar').innerHTML = `
-    <div class="kpi-chip"><div class="lbl">Tổng TVV</div><div class="val">${count}</div></div>
-    <div class="kpi-chip"><div class="lbl">Cam kết tháng</div><div class="val">${fmt(commit)}</div></div>
-    <div class="kpi-chip"><div class="lbl">Thực đạt tháng${srcBadge}</div><div class="val">${fmt(actual)}</div></div>
-    <div class="kpi-chip"><div class="lbl">% Đạt</div><div class="val" style="color:${pct>=100?'#0f9d58':pct>=70?'#b45309':'#c0243c'}">${pct}%</div></div>
-    <div class="kpi-chip"><div class="lbl">Dự báo tháng</div><div class="val" style="color:${fpct>=100?'#0f9d58':fpct>=70?'#b45309':'#c0243c'}">${fmt(Math.round(forecast))}</div></div>`;
+    <div class="kpi-chip" data-color="target"><div class="lbl">Tổng TVV</div><div class="val">${count}</div></div>
+    <div class="kpi-chip" data-color="target"><div class="lbl">Cam kết tháng</div><div class="val">${fmt(commit)}</div></div>
+    <div class="kpi-chip" data-color="actual"><div class="lbl">Thực đạt tháng${srcBadge}</div><div class="val">${fmt(actual)}</div></div>
+    <div class="kpi-chip" data-color="target"><div class="lbl">% Đạt</div><div class="val" style="color:${pct>=100?'#0f9d58':pct>=70?'#b45309':'#c0243c'}">${pct}%</div></div>
+    <div class="kpi-chip" data-color="forecast"><div class="lbl">Dự báo tháng</div><div class="val" style="color:${fpct>=100?'#0f9d58':fpct>=70?'#b45309':'#c0243c'}">${fmt(Math.round(forecast))}</div></div>`;
 }
 
 // ── Chi tiết TVV: chart tuần trong tháng + xu hướng cả năm + pending ──
@@ -1073,6 +1162,7 @@ function openTvvDetail(code){
   if(!row){ alert('Không tìm thấy dữ liệu cho TVV này.'); return; }
   document.getElementById('detailTitle').textContent = `${row.name} ${row.isNew?'(chưa có cam kết)':''}`;
   document.getElementById('detailSub').textContent = `Unit ${row.unit||'—'} · Mã TVV ${row.code}`;
+  document.getElementById('detailProfileLink').href = `/tvv-profile.html?code=${encodeURIComponent(code)}&year=${currentYear()}&month=${currentMonth()}`;
 
   const trend = row.trend;
   const dirLabel = trend.trendDir==='up' ? '📈 Xu hướng tăng' : trend.trendDir==='down' ? '📉 Bất thường thấp' : '➡️ Ổn định';

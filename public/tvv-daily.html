@@ -291,6 +291,7 @@
       <h3 id="trendTitle">Xu hướng theo ngày</h3>
       <button id="trendClose">&times;</button>
     </div>
+    <a id="trendProfileLink" href="#" target="_blank" style="font-size:12px;color:#1d4ed8;text-decoration:none;display:inline-block;margin-bottom:10px">🔗 Mở Hồ sơ TVV đầy đủ (tổng hợp mọi tab)</a>
     <div class="field" style="margin-bottom:10px;">
       <label>Chỉ số</label>
       <select id="trendMetric">
@@ -904,6 +905,7 @@ document.getElementById("trendMetric").addEventListener("change", () => {
 async function openTrend(agCode, agName) {
   trendModal.dataset.agcode = agCode; trendModal.dataset.agname = agName;
   document.getElementById("trendTitle").textContent = `Xu hướng theo ngày — ${agName} (${agCode})`;
+  document.getElementById("trendProfileLink").href = `/tvv-profile.html?code=${encodeURIComponent(agCode)}&year=${new Date().getFullYear()}&month=${new Date().getMonth()+1}`;
   trendModal.classList.add("active");
   const monthStr = monthSelect.value;
   const dates = allDatesCache.filter(d => d.startsWith(monthStr)).sort();
