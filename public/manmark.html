@@ -272,7 +272,7 @@
     <button class="close-x" onclick="closeAddTvvModal()">✕</button>
     <h3>➕ Thêm TVV mới</h3>
     <div class="field"><label>Unit</label><input type="text" id="atv-unit"/></div>
-    <div class="field"><label>Mã TVV (AGCode/MSDL)</label><input type="text" id="atv-code"/></div>
+    <div class="field"><label>Mã TVV (MSDL)</label><input type="text" id="atv-code"/></div>
     <div class="field"><label>Tên TVV</label><input type="text" id="atv-name"/></div>
     <div class="field"><label>AG Segment</label><input type="text" id="atv-segment"/></div>
     <div class="field"><label>Cam kết tháng</label><input type="number" id="atv-month"/></div>
@@ -311,7 +311,7 @@ let yearlyHistoryYear = null;
 let detailChartWeekly = null, detailChartMonthly = null;
 let actualSource = 'salesreport'; // 'salesreport' (nhập tay, cũ) | 'official' (daily_sales_tvv, chính thức)
 let officialMonthDates = [];      // ['2026-09-01', '2026-09-02', ...] đã sắp xếp tăng dần, trong tháng đang xem
-let officialMonthAgents = {};     // { [date]: { [agCode]: {fyp,fyc,caseNet,ipNet,caseSub,ipSub} } }
+let officialMonthAgents = {};     // { [date]: { [msdl]: {fyp,fyc,caseNet,ipNet,caseSub,ipSub} } }
 let officialLatestPendingPipeline = { pendingRows:[], pipelineRows:[] }; // hồ sơ thô, ngày mới nhất trong tháng
 
 function defaultManmark(){
@@ -462,8 +462,9 @@ async function loadOfficialMonthData(){
       const latestDate = officialMonthDates[officialMonthDates.length-1];
       const latestSnap = snaps.docs.find(d=>d.id===latestDate);
       const latestData = latestSnap ? latestSnap.data() : {};
-      officialLatestPendingPipeline.pendingRows = latestData.pendingRows || [];
-      officialLatestPendingPipeline.pipelineRows = latestData.pipelineRows || [];
+      const fixMsdl = arr => (arr||[]).map(r => (r.msdl===undefined && r.agCode!==undefined) ? {...r, msdl:r.agCode} : r);
+      officialLatestPendingPipeline.pendingRows = fixMsdl(latestData.pendingRows);
+      officialLatestPendingPipeline.pipelineRows = fixMsdl(latestData.pipelineRows);
     }
   }catch(e){
     console.error('daily_sales_tvv read error (kiểm tra rule Firestore cho collection này):', e);
@@ -582,7 +583,7 @@ function parseUploadedFile(){
       const r=rows[i]||[];
       if(r.some(c=>typeof c==='string' && /agcode|msdl/i.test(c))){ headerRowIdx=i; break; }
     }
-    if(headerRowIdx===-1){ alert('Không tìm thấy dòng tiêu đề (cần có cột AGCode hoặc MSDL)'); return; }
+    if(headerRowIdx===-1){ alert('Không tìm thấy dòng tiêu đề (cần có cột MSDL)'); return; }
     const headers = (rows[headerRowIdx]||[]).map(h=>h==null?'':String(h).trim());
     const dataRows = [];
     for(let i=headerRowIdx+1;i<rows.length;i++){
@@ -642,7 +643,7 @@ function openMapModal(){
   const t = document.getElementById('mapTable');
   let html = '';
   html += row('Unit / Nhóm', 'map-unit', opts(unitIdx));
-  html += row('Mã TVV (AGCode/MSDL)', 'map-code', opts(codeIdx));
+  html += row('Mã TVV (MSDL)', 'map-code', opts(codeIdx));
   html += row('Tên TVV', 'map-name', opts(nameIdx));
   html += row('AG Segment', 'map-segment', opts(segmentIdx));
   html += row('Cam kết tháng', 'map-month', opts(monthIdx));
@@ -856,18 +857,18 @@ function actualsForPerson(person, weeks){
   return res;
 }
 
-// ── Giá trị hồ sơ đang Pending / Pipeline (tiềm năng), theo AGCode ──
+// ── Giá trị hồ sơ đang Pending / Pipeline (tiềm năng), theo MSDL ──
 // Giá trị Pending/Pipeline giờ luôn lấy từ daily_sales_tvv (nguồn duy nhất sau khi hợp nhất với tab
 // Pending Cases — collection pending_cases chỉ còn giữ trạng thái xử lý (statuses) + lịch sử "đã biến mất" (goneMap),
 // không còn tự lưu danh sách hồ sơ nữa).
 function pendingValueByCode(code){
   const statuses = pendingDoc.statuses || {};
-  const norm = r => ({ proposalNum:r.proposalNum, productName:r.product, ape:r.ape, proposalDate:r.proposalDate, agCode:r.agCode });
+  const norm = r => ({ proposalNum:r.proposalNum, productName:r.product, ape:r.ape, proposalDate:r.proposalDate, msdl:r.msdl });
   const pendingMine = officialLatestPendingPipeline.pendingRows
-    .filter(r=> String(r.agCode||'').trim()===String(code).trim() && statuses[String(r.proposalNum)]!=='WD')
+    .filter(r=> String(r.msdl||'').trim()===String(code).trim() && (statuses[`${r.proposalNum}::${r.msdl}`] ?? statuses[String(r.proposalNum)]) !=='WD')
     .map(norm);
   const pipelineMine = officialLatestPendingPipeline.pipelineRows
-    .filter(r=> String(r.agCode||'').trim()===String(code).trim())
+    .filter(r=> String(r.msdl||'').trim()===String(code).trim())
     .map(norm);
   const pendApe = pendingMine.reduce((s,r)=>s+Number(r.ape||0),0);
   const pipeApe = pipelineMine.reduce((s,r)=>s+Number(r.ape||0),0);

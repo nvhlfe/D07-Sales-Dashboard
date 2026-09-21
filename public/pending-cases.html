@@ -274,8 +274,15 @@ function requireLogin(){ if(!currentUser){ openLoginModal(); return false; } ret
 
 // pending_cases/main giờ CHỈ lưu phần "giá trị gia tăng" của tab này: trạng thái xử lý
 // từng hồ sơ + lịch sử hồ sơ đã biến mất. Dữ liệu hồ sơ gốc lấy trực tiếp từ daily_sales_tvv.
-let statuses = {};   // { proposalNum: 'IF'|'PO'|'WD'|'CFI'|'PS' }
-let goneMap = {};    // { proposalNum: {...caseData, resolvedDate} }
+let statuses = {};   // { "proposalNum::msdl": 'IF'|'PO'|'WD'|'CFI'|'PS' } — key ghép để không đụng nhau khi 1 hồ sơ chia 2 TVV (cùng ProposalNum, khác MSDL)
+let goneMap = {};    // { "proposalNum::msdl": {...caseData, resolvedDate} }
+
+// Key định danh 1 dòng hồ sơ = ProposalNum + MSDL (không dùng ProposalNum một mình,
+// vì hồ sơ chia 2 TVV có 2 dòng cùng ProposalNum nhưng khác MSDL — dùng ProposalNum
+// một mình sẽ khiến 2 dòng đó bị coi là "cùng 1 ô nhớ", đè trạng thái/lịch sử của nhau).
+function caseKey(c){ return String(c.proposalNum) + '::' + String(c.msdl||''); }
+function legacyKey(c){ return String(c.proposalNum); } // key cũ, chỉ dùng để đọc dữ liệu đã lưu trước khi có bản vá này
+function getStatus(c){ return statuses[c.key] ?? statuses[c.legacyKey] ?? ''; }
 let pendingHistory = {}; // { 'YYYY-MM-DD': [pendingRow,...] } — toàn bộ lịch sử từ daily_sales_tvv
 let allDates = [];       // ngày có dữ liệu, tăng dần
 let viewDateVal = '';    // ngày đang xem (mặc định = mới nhất)
@@ -312,7 +319,7 @@ function loadFromFirestore(){
 function mapCase(c){
   const detail = (c.requirements||[]).map(r=>`${r.name}: ${r.detail}`).join(' | ');
   return {
-    key: String(c.proposalNum), agCode: c.agCode, agName: c.agName, unitCode: c.unit,
+    key: caseKey(c), legacyKey: legacyKey(c), msdl: c.msdl, agName: c.agName, unitCode: c.unit,
     proposalNum: c.proposalNum, proposalDate: c.proposalDate, productName: c.product,
     basicProductCode: '', ape: c.ape, poName: c.poName, description: c.description,
     classify: c.classify, detail
@@ -324,7 +331,11 @@ async function syncFromDailySales(){
   try{
     const snaps = await getDocs(collection(db,'daily_sales_tvv'));
     const byDate = {};
-    snaps.forEach(s=>{ byDate[s.id] = (s.data()||{}).pendingRows || []; });
+    snaps.forEach(s=>{
+      const rows = (s.data()||{}).pendingRows || [];
+      rows.forEach(r => { if(r.msdl===undefined && r.agCode!==undefined) r.msdl = r.agCode; }); // dữ liệu ngày cũ trước khi đổi tên trường sang msdl
+      byDate[s.id] = rows;
+    });
     allDates = Object.keys(byDate).sort();
     pendingHistory = byDate;
     computeGoneFromHistory();
@@ -343,16 +354,16 @@ function computeGoneFromHistory(){
   let changed = false;
   for(let i=1;i<allDates.length;i++){
     const prevRows = pendingHistory[allDates[i-1]]||[];
-    const curKeys = new Set((pendingHistory[allDates[i]]||[]).map(c=>String(c.proposalNum)));
+    const curKeys = new Set((pendingHistory[allDates[i]]||[]).map(caseKey));
     prevRows.forEach(c=>{
-      const key = String(c.proposalNum);
+      const key = caseKey(c);
       if(!curKeys.has(key) && !goneMap[key]){
         goneMap[key] = Object.assign({}, mapCase(c), { resolvedDate: allDates[i] });
         changed = true;
       }
     });
   }
-  const latestKeys = new Set((pendingHistory[allDates[allDates.length-1]]||[]).map(c=>String(c.proposalNum)));
+  const latestKeys = new Set((pendingHistory[allDates[allDates.length-1]]||[]).map(caseKey));
   Object.keys(goneMap).forEach(k=>{ if(latestKeys.has(k)){ delete goneMap[k]; changed = true; } });
   if(changed) saveAnnotations();
 }
@@ -402,10 +413,10 @@ function fmtProposalDate(v){
   return s;
 }
 
-function statusSelect(key){
-  const val = statuses[key] || '';
+function statusSelect(c){
+  const val = getStatus(c);
   const opts = ['','IF','PO','WD','CFI','PS'];
-  return `<select class="status" onchange="setStatus('${key}',this.value)">` +
+  return `<select class="status" onchange="setStatus('${c.key}',this.value)">` +
     opts.map(o=>`<option value="${o}" ${o===val?'selected':''}>${o||'—'}</option>`).join('') +
     `</select>`;
 }
@@ -429,7 +440,7 @@ function render(){
   const viewDate = viewDateVal || allDates[allDates.length-1] || null;
   const priorDate = priorDateVal || '';
   const current = viewDate ? (pendingHistory[viewDate]||[]).map(mapCase) : [];
-  const priorKeys = new Set((priorDate ? (pendingHistory[priorDate]||[]) : []).map(c=>String(c.proposalNum)));
+  const priorKeys = new Set((priorDate ? (pendingHistory[priorDate]||[]) : []).map(caseKey));
 
   document.getElementById('lastUpdated').textContent = viewDate
     ? `Đang xem: ${fmtDateVN(viewDate)}${priorDate? ' · so với '+fmtDateVN(priorDate) : ' · chưa chọn ngày so sánh'}`
@@ -441,9 +452,9 @@ function render(){
 
   let rows = current.filter(c=>{
     if(fClassify && c.classify!==fClassify) return false;
-    if(fStatus && (statuses[c.key]||'')!==fStatus) return false;
+    if(fStatus && getStatus(c)!==fStatus) return false;
     if(search){
-      const hay = [c.agCode,c.agName,c.proposalNum,c.policyNum,c.productName,c.description,c.detail,c.unitCode,c.poName]
+      const hay = [c.msdl,c.agName,c.proposalNum,c.policyNum,c.productName,c.description,c.detail,c.unitCode,c.poName]
         .map(x=> x==null?'':String(x).toLowerCase()).join(' ');
       if(!hay.includes(search)) return false;
     }
@@ -471,7 +482,7 @@ function render(){
     const isNew = priorDate && !priorKeys.has(c.key);
     return `<tr class="${isNew?'is-new':''}">
       <td>${isNew?'<span class="tag new">MỚI</span>':''}</td>
-      <td><div>${c.agName||''} <a href="/tvv-profile.html?code=${encodeURIComponent(c.agCode)}" target="_blank" title="Mở Hồ sơ TVV đầy đủ" style="text-decoration:none">🔗</a></div><div class="mono" style="color:#9a8f83">${c.unitCode||''} / ${c.agCode||''}</div></td>
+      <td><div>${c.agName||''} <a href="/tvv-profile.html?code=${encodeURIComponent(c.msdl)}" target="_blank" title="Mở Hồ sơ TVV đầy đủ" style="text-decoration:none">🔗</a></div><div class="mono" style="color:#9a8f83">${c.unitCode||''} / ${c.msdl||''}</div></td>
       <td class="mono">${c.proposalNum||''}</td>
       <td class="mono">${c.policyNum||''}</td>
       <td class="mono">${fmtProposalDate(c.proposalDate)}</td>
@@ -480,7 +491,7 @@ function render(){
       <td>${c.poName||''}</td>
       <td class="reason"><div class="desc">${c.description||''}</div>${c.detail?`<div class="detail" onclick="toggleDetail(this)">${c.detail}</div>`:''}</td>
       <td>${c.classify==='Big Case'?'<span class="tag big">Big</span>':(c.classify?'<span class="tag normal">Normal</span>':'')}</td>
-      <td>${statusSelect(c.key)}</td>
+      <td>${statusSelect(c)}</td>
     </tr>`;
   }).join('');
 
@@ -492,13 +503,13 @@ function render(){
   document.getElementById('goneCount').textContent = `${goneList.length} hồ sơ`;
   document.getElementById('goneBody').innerHTML = goneList.map(c=>`
     <tr class="is-gone">
-      <td>${c.agName||''}<div class="mono" style="color:#9a8f83">${c.unitCode||''} / ${c.agCode||''}</div></td>
+      <td>${c.agName||''}<div class="mono" style="color:#9a8f83">${c.unitCode||''} / ${c.msdl||''}</div></td>
       <td class="mono">${c.proposalNum||''}</td>
       <td class="mono">${c.policyNum||''}</td>
       <td>${c.productName||''}</td>
       <td class="mono">${c.ape!=null? Number(c.ape).toLocaleString('vi-VN',{maximumFractionDigits:1}):''}</td>
       <td class="reason">${c.description||''}</td>
-      <td>${statusSelect(c.key)}</td>
+      <td>${statusSelect(c)}</td>
       <td><span class="tag gone">${fmtDateVN(c.resolvedDate)}</span></td>
       <td><button class="dismiss-btn" onclick="dismissGone('${c.key}')">bỏ khỏi danh sách</button></td>
     </tr>
@@ -526,11 +537,11 @@ function exportCSV(){
   const viewDate = viewDateVal || allDates[allDates.length-1] || null;
   if(!viewDate){ alert('Chưa có dữ liệu.'); return; }
   const rows = (pendingHistory[viewDate]||[]).map(mapCase);
-  const header = ['AGCode','AGName','ProposalNum','PolicyNum','ProposalDate','ProductName','APE','UnitCode','POName','Description','Classify','Status'];
+  const header = ['MSDL','AGName','ProposalNum','PolicyNum','ProposalDate','ProductName','APE','UnitCode','POName','Description','Classify','Status'];
   const lines = [header.join(',')].concat(rows.map(c=> [
-    c.agCode,`"${(c.agName||'').replace(/"/g,'""')}"`,c.proposalNum,c.policyNum,fmtProposalDate(c.proposalDate),
+    c.msdl,`"${(c.agName||'').replace(/"/g,'""')}"`,c.proposalNum,c.policyNum,fmtProposalDate(c.proposalDate),
     `"${(c.productName||'').replace(/"/g,'""')}"`,c.ape,c.unitCode,`"${(c.poName||'').replace(/"/g,'""')}"`,
-    `"${(c.description||'').replace(/"/g,'""')}"`,c.classify, statuses[c.key]||''
+    `"${(c.description||'').replace(/"/g,'""')}"`,c.classify, getStatus(c)
   ].join(',')));
   const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
   const a = document.createElement('a');

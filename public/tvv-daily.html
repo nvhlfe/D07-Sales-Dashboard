@@ -194,7 +194,7 @@
         </div>
         <div class="field">
           <label>Tìm kiếm TVV / Unit</label>
-          <input type="text" class="searchbox" id="searchBox" placeholder="Tên, mã AGCode, Unit...">
+          <input type="text" class="searchbox" id="searchBox" placeholder="Tên, mã MSDL, Unit...">
         </div>
         <button class="btn secondary" id="refreshBtn">↻ Tải lại</button>
       </div>
@@ -219,7 +219,7 @@
         </div>
         <div class="tablewrap"><table id="tvvTable">
           <thead><tr>
-            <th data-key="unit">Unit</th><th data-key="agCode">Mã TVV</th><th data-key="agName">Tên TVV</th><th data-key="agSeg">Hạng</th>
+            <th data-key="unit">Unit</th><th data-key="msdl">Mã TVV</th><th data-key="agName">Tên TVV</th><th data-key="agSeg">Hạng</th>
             <th class="col-case" data-key="caseSub">Case Sub</th><th class="col-case" data-key="caseNet">Case Net</th>
             <th class="col-ip" data-key="ipSub">IP Sub</th><th class="col-ip" data-key="ipNet">IP Net</th>
             <th class="col-fyp" data-key="fyp">FYP</th><th class="col-fyp" data-key="fyc">FYC</th>
@@ -416,7 +416,7 @@ function parseWorkbook(arrayBuffer) {
     const status = (r["PolicyStatus"] || "").toString().trim().toUpperCase();
     const statusGroup = status === "IF" ? "IF" : status === "PS" ? "PS" : "OTHER";
     proposalRows.push({
-      unit: r["UnitCode"] || "", agCode: String(r["AGCode"]), agName: r["AGName"] || "",
+      unit: r["UnitCode"] || "", msdl: String(r["AGCode"]), agName: r["AGName"] || "",
       proposalNum: r["ProposalNum"] ? String(r["ProposalNum"]) : "",
       status, statusGroup, statusFull: r["CurrentPolicyStatus"] || "",
       product: r["Remarked_ProductNameVN"] || r["ProductCode"] || "",
@@ -430,10 +430,10 @@ function parseWorkbook(arrayBuffer) {
   const agents = {};
   for (const r of (rawAgent || [])) {
     if (typeof r["YearMonth"] !== "number" || !r["AGCode"]) continue;
-    const agCode = String(r["AGCode"]);
-    agents[agCode] = {
+    const msdl = String(r["AGCode"]);
+    agents[msdl] = {
       unit: r["UnitCode"] || "", leaderCode: r["LeaderCode"] ? String(r["LeaderCode"]) : "",
-      agCode, agName: r["AGName"] || "", agSeg: r["AGSegName"] || "",
+      msdl, agName: r["AGName"] || "", agSeg: r["AGSegName"] || "",
       ipSub: num(r["IP Sub"]), caseSub: num(r["Case Sub"]), fyp: num(r["FYP"]),
       ipNet: num(r["IP Net"]), caseNet: num(r["Case Net"]), fyc: num(r["FYC"]),
       cIF: 0, cPS: 0, cOther: 0
@@ -441,10 +441,10 @@ function parseWorkbook(arrayBuffer) {
   }
   // gắn đếm số hồ sơ IF/PS/Khác từ Proposal vào từng TVV
   for (const p of proposalRows) {
-    if (!agents[p.agCode]) continue;
-    if (p.statusGroup === "IF") agents[p.agCode].cIF++;
-    else if (p.statusGroup === "PS") agents[p.agCode].cPS++;
-    else agents[p.agCode].cOther++;
+    if (!agents[p.msdl]) continue;
+    if (p.statusGroup === "IF") agents[p.msdl].cIF++;
+    else if (p.statusGroup === "PS") agents[p.msdl].cPS++;
+    else agents[p.msdl].cOther++;
   }
 
   // --- Leader (Unit level, chuẩn từ hệ thống, thiếu IP nên cộng dồn thêm từ Agent) ---
@@ -460,8 +460,8 @@ function parseWorkbook(arrayBuffer) {
       ipSubUnit: 0, ipNetUnit: 0, cIF: 0, cPS: 0, cOther: 0
     };
   }
-  for (const agCode in agents) {
-    const a = agents[agCode];
+  for (const msdl in agents) {
+    const a = agents[msdl];
     if (!units[a.unit]) units[a.unit] = { unit: a.unit, leaderName: "", agSeg: "", manpower: 0, caseSubUnit:0, caseNetUnit:0, apeSubUnit:0, apeNetUnit:0, ipSubUnit:0, ipNetUnit:0, cIF:0, cPS:0, cOther:0 };
     const u = units[a.unit];
     u.ipSubUnit += a.ipSub; u.ipNetUnit += a.ipNet;
@@ -477,7 +477,7 @@ function parseWorkbook(arrayBuffer) {
       .filter(f => r[f] !== null && r[f] !== undefined && String(r[f]).trim() !== "")
       .map(f => ({ name: f, detail: String(r[f]).slice(0,200) }));
     pendingRows.push({
-      unit: r["UnitCode"] || "", agCode: String(r["AGCode"]), agName: r["AGName"] || "",
+      unit: r["UnitCode"] || "", msdl: String(r["AGCode"]), agName: r["AGName"] || "",
       proposalNum: String(r["ProposalNum"]), proposalDate: excelDateIntToISO(r["ProposalDate"]),
       product: r["ProductNameVN"] || r["BasicProductCode"] || "", ape: num(r["APE (mil)"]),
       poName: r["POName"] || "", description: r["Description"] || "",
@@ -490,7 +490,7 @@ function parseWorkbook(arrayBuffer) {
   for (const r of (rawPipeline || [])) {
     if (!isValidCode(r["AGCode"]) || !r["ProposalNum"]) continue;
     pipelineRows.push({
-      unit: r["UnitCode"] || "", agCode: String(r["AGCode"]), agName: r["AGName"] || "",
+      unit: r["UnitCode"] || "", msdl: String(r["AGCode"]), agName: r["AGName"] || "",
       proposalNum: String(r["ProposalNum"]), proposalDate: excelDateIntToISO(r["ProposalDate"]),
       product: r["ProductNameVN"] || r["BasicProductCode"] || "", ape: num(r["APE (mil)"]),
       poName: r["PO_Name"] || "", description: r["Description"] || "", classify: r["Classify"] || ""
@@ -508,10 +508,19 @@ async function saveDailyDoc(dateStr, parsed) {
     proposalRows: parsed.proposalRows, pendingRows: parsed.pendingRows, pipelineRows: parsed.pipelineRows
   });
 }
+// Dữ liệu ngày cũ (trước khi đổi tên trường sang msdl) vẫn có thể còn field "agCode" —
+// chuẩn hoá về "msdl" ngay khi đọc để toàn bộ code phía sau chỉ cần biết mỗi "msdl".
+function normalizeMsdlFields(data) {
+  if (!data) return data;
+  const fix = (arr) => (arr || []).forEach(r => { if (r.msdl === undefined && r.agCode !== undefined) r.msdl = r.agCode; });
+  fix(data.proposalRows); fix(data.pendingRows); fix(data.pipelineRows);
+  if (data.agents) Object.values(data.agents).forEach(a => { if (a.msdl === undefined && a.agCode !== undefined) a.msdl = a.agCode; });
+  return data;
+}
 async function loadDailyDoc(dateStr) {
   if (!dateStr) return null;
   const snap = await getDoc(doc(db, COLLECTION_DAILY, dateStr));
-  return snap.exists() ? snap.data() : null;
+  return snap.exists() ? normalizeMsdlFields(snap.data()) : null;
 }
 async function listAllMonths() {
   const snaps = await getDocs(collection(db, COLLECTION_DAILY));
@@ -720,13 +729,13 @@ async function exportTvvLatest() {
   if (unitF.length) list = list.filter(a => unitF.includes(a.unit));
   if (segF.length) list = list.filter(a => segF.includes(a.agSeg));
   const search = document.getElementById("searchBox").value.trim().toLowerCase();
-  if (search) list = list.filter(a => (a.agName||"").toLowerCase().includes(search) || (a.agCode||"").toLowerCase().includes(search) || (a.unit||"").toLowerCase().includes(search));
+  if (search) list = list.filter(a => (a.agName||"").toLowerCase().includes(search) || (a.msdl||"").toLowerCase().includes(search) || (a.unit||"").toLowerCase().includes(search));
   list = applySort(list, "tvv");
 
   if (!list.length) { alert("Không có dữ liệu phù hợp bộ lọc hiện tại để xuất"); return; }
 
   const rows = list.map(a => ({
-    "Unit": a.unit, "Mã TVV": a.agCode, "Tên TVV": a.agName, "Hạng": a.agSeg,
+    "Unit": a.unit, "Mã TVV": a.msdl, "Tên TVV": a.agName, "Hạng": a.agSeg,
     "Case Sub": Math.round(a.caseSub || 0), "Case Net": Math.round(a.caseNet || 0),
     "IP Sub": Math.round(a.ipSub || 0), "IP Net": Math.round(a.ipNet || 0),
     "FYP": Math.round(a.fyp || 0), "FYC": Math.round(a.fyc || 0),
@@ -785,22 +794,22 @@ function renderTvvTable(agents, baseAgents, search, unitF, segF) {
   let list = Object.values(agents);
   if (unitF && unitF.length) list = list.filter(a => unitF.includes(a.unit));
   if (segF && segF.length) list = list.filter(a => segF.includes(a.agSeg));
-  if (search) list = list.filter(a => (a.agName||"").toLowerCase().includes(search) || (a.agCode||"").toLowerCase().includes(search) || (a.unit||"").toLowerCase().includes(search));
+  if (search) list = list.filter(a => (a.agName||"").toLowerCase().includes(search) || (a.msdl||"").toLowerCase().includes(search) || (a.unit||"").toLowerCase().includes(search));
   list = applySort(list, "tvv");
   const tbody = document.querySelector("#tvvTable tbody");
   if (!list.length) { tbody.innerHTML = `<tr><td colspan="14" class="empty">Không có dữ liệu — hãy tải file cho ngày này</td></tr>`; return; }
   tbody.innerHTML = list.map(a => {
-    const base = baseAgents[a.agCode];
+    const base = baseAgents[a.msdl];
     return `<tr>
-      <td>${a.unit}</td><td>${a.agCode}</td><td>${a.agName}</td><td class="seg-${a.agSeg}">${a.agSeg||""}</td>
+      <td>${a.unit}</td><td>${a.msdl}</td><td>${a.agName}</td><td class="seg-${a.agSeg}">${a.agSeg||""}</td>
       <td class="col-case">${cellWithDelta(a.caseSub, base?.caseSub)}</td><td class="col-case">${cellWithDelta(a.caseNet, base?.caseNet)}</td>
       <td class="col-ip">${cellWithDelta(a.ipSub, base?.ipSub)}</td><td class="col-ip">${cellWithDelta(a.ipNet, base?.ipNet)}</td>
       <td class="col-fyp">${cellWithDelta(a.fyp, base?.fyp)}</td><td class="col-fyp">${cellWithDelta(a.fyc, base?.fyc)}</td>
       <td class="col-count">${a.cIF}</td><td class="col-count">${a.cPS}</td><td class="col-count">${a.cOther}</td>
-      <td><button class="trendbtn" data-agcode="${a.agCode}" data-agname="${a.agName}">📈</button></td>
+      <td><button class="trendbtn" data-msdl="${a.msdl}" data-agname="${a.agName}">📈</button></td>
     </tr>`;
   }).join("");
-  tbody.querySelectorAll(".trendbtn").forEach(b => b.addEventListener("click", () => openTrend(b.dataset.agcode, b.dataset.agname)));
+  tbody.querySelectorAll(".trendbtn").forEach(b => b.addEventListener("click", () => openTrend(b.dataset.msdl, b.dataset.agname)));
 }
 
 function renderLeaderTable(units, baseUnits, search, unitF) {
@@ -879,13 +888,13 @@ function renderPipelineTables(rows, baseRows, search) {
   // summary by agent
   const byAgent = {};
   for (const r of list) {
-    if (!byAgent[r.agCode]) byAgent[r.agCode] = { unit: r.unit, agCode: r.agCode, agName: r.agName, count: 0, ape: 0 };
-    byAgent[r.agCode].count++; byAgent[r.agCode].ape += r.ape;
+    if (!byAgent[r.msdl]) byAgent[r.msdl] = { unit: r.unit, msdl: r.msdl, agName: r.agName, count: 0, ape: 0 };
+    byAgent[r.msdl].count++; byAgent[r.msdl].ape += r.ape;
   }
   let summaryList = applySort(Object.values(byAgent), "pipeline");
   const sumBody = document.querySelector("#pipelineSummaryTable tbody");
   sumBody.innerHTML = summaryList.length ? summaryList.map(a =>
-    `<tr><td>${a.unit}</td><td>${a.agCode}</td><td>${a.agName}</td><td>${a.count}</td><td>${fmt(a.ape)}</td></tr>`
+    `<tr><td>${a.unit}</td><td>${a.msdl}</td><td>${a.agName}</td><td>${a.count}</td><td>${fmt(a.ape)}</td></tr>`
   ).join("") : `<tr><td colspan="5" class="empty">Không có dữ liệu Pipeline cho ngày này</td></tr>`;
 
   const detBody = document.querySelector("#pipelineDetailTable tbody");
@@ -899,13 +908,13 @@ function renderPipelineTables(rows, baseRows, search) {
 const trendModal = document.getElementById("trendModal");
 document.getElementById("trendClose").addEventListener("click", () => trendModal.classList.remove("active"));
 document.getElementById("trendMetric").addEventListener("change", () => {
-  if (trendModal.classList.contains("active")) openTrend(trendModal.dataset.agcode, trendModal.dataset.agname);
+  if (trendModal.classList.contains("active")) openTrend(trendModal.dataset.msdl, trendModal.dataset.agname);
 });
 
-async function openTrend(agCode, agName) {
-  trendModal.dataset.agcode = agCode; trendModal.dataset.agname = agName;
-  document.getElementById("trendTitle").textContent = `Xu hướng theo ngày — ${agName} (${agCode})`;
-  document.getElementById("trendProfileLink").href = `/tvv-profile.html?code=${encodeURIComponent(agCode)}&year=${new Date().getFullYear()}&month=${new Date().getMonth()+1}`;
+async function openTrend(msdl, agName) {
+  trendModal.dataset.msdl = msdl; trendModal.dataset.agname = agName;
+  document.getElementById("trendTitle").textContent = `Xu hướng theo ngày — ${agName} (${msdl})`;
+  document.getElementById("trendProfileLink").href = `/tvv-profile.html?code=${encodeURIComponent(msdl)}&year=${new Date().getFullYear()}&month=${new Date().getMonth()+1}`;
   trendModal.classList.add("active");
   const monthStr = monthSelect.value;
   const dates = allDatesCache.filter(d => d.startsWith(monthStr)).sort();
@@ -913,7 +922,7 @@ async function openTrend(agCode, agName) {
   const values = [];
   for (const d of dates) {
     const dd = await loadDailyDoc(d);
-    const a = dd && dd.agents ? dd.agents[agCode] : null;
+    const a = dd && dd.agents ? dd.agents[msdl] : null;
     values.push(a ? a[metric] : 0);
   }
   const ctx = document.getElementById("trendChart").getContext("2d");
@@ -924,18 +933,18 @@ async function openTrend(agCode, agName) {
     options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
   });
 
-  await renderTrendCaseLists(agCode);
+  await renderTrendCaseLists(msdl);
 }
 
-async function renderTrendCaseLists(agCode) {
+async function renderTrendCaseLists(msdl) {
   const latestDate = allDatesCache.length ? allDatesCache[allDatesCache.length - 1] : null;
   const asOfText = latestDate ? `(cập nhật ngày ${latestDate})` : "";
   document.getElementById("trendPendingAsOf").textContent = asOfText;
   document.getElementById("trendPipelineAsOf").textContent = asOfText;
 
   const latestDoc = latestDate ? await loadDailyDoc(latestDate) : null;
-  const pendingList = latestDoc ? (latestDoc.pendingRows || []).filter(r => r.agCode === agCode) : [];
-  const pipelineList = latestDoc ? (latestDoc.pipelineRows || []).filter(r => r.agCode === agCode) : [];
+  const pendingList = latestDoc ? (latestDoc.pendingRows || []).filter(r => r.msdl === msdl) : [];
+  const pipelineList = latestDoc ? (latestDoc.pipelineRows || []).filter(r => r.msdl === msdl) : [];
 
   const pBody = document.getElementById("trendPendingBody");
   pBody.innerHTML = pendingList.length ? pendingList.map(r => `

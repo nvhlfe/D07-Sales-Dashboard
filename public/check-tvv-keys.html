@@ -51,7 +51,7 @@
 
 <div id="appScreen">
   <header>
-    <h1>🔍 Kiểm tra format mã TVV (AGCode / MSDL)</h1>
+    <h1>🔍 Kiểm tra format mã TVV (MSDL)</h1>
     <div class="sub">Công cụ này CHỈ ĐỌC dữ liệu — không sửa hay xoá bất cứ gì. Dùng để xem trước khi quyết định có cần chuẩn hoá format mã hay không.</div>
   </header>
   <main>
@@ -136,7 +136,7 @@ async function runScan(){
   const dailySalesKeys = new Set(); // mã chuẩn hoá có trong daily_sales_tvv (nguồn "chuẩn")
 
   try{
-    // 1) daily_sales_tvv — agents object keys = AGCode
+    // 1) daily_sales_tvv — agents object keys = MSDL
     const dsSnaps = await getDocs(collection(db,'daily_sales_tvv'));
     dsSnaps.forEach(s=>{
       const agents = (s.data()||{}).agents || {};
@@ -165,11 +165,11 @@ async function runScan(){
     });
     statusEl.textContent += `\nreports: ${repSnaps.size} tháng, ${repPersonCount} dòng TVV.\nĐang đọc pending_cases...`;
 
-    // 4) pending_cases/main — goneMap values có field agCode
+    // 4) pending_cases/main — goneMap values có field msdl (dữ liệu cũ trước khi đổi tên còn field agCode)
     const pcSnap = await getDoc(doc(db,'pending_cases','main'));
     if(pcSnap.exists()){
       const goneMap = pcSnap.data().goneMap || {};
-      Object.values(goneMap).forEach(c=>{ if(c && c.agCode!=null) addOcc(occAll, c.agCode, 'pending_cases/main (goneMap)'); });
+      Object.values(goneMap).forEach(c=>{ const v = c && (c.msdl ?? c.agCode); if(v!=null) addOcc(occAll, v, 'pending_cases/main (goneMap)'); });
     }
 
     statusEl.textContent += `\nHoàn tất. Đang phân tích...`;

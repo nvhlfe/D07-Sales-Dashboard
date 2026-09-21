@@ -215,8 +215,8 @@ async function loadDailySalesHistory(){
     latestDate = allDates[allDates.length-1] || '';
     const latestDoc = docsSorted.find(d=>d.id===latestDate);
     if(latestDoc){
-      latestPendingSrc = (latestDoc.data.pendingRows||[]).filter(r=>String(r.agCode)===String(code));
-      latestPipelineSrc = (latestDoc.data.pipelineRows||[]).filter(r=>String(r.agCode)===String(code));
+      latestPendingSrc = (latestDoc.data.pendingRows||[]).filter(r=>String(r.msdl ?? r.agCode)===String(code));
+      latestPipelineSrc = (latestDoc.data.pipelineRows||[]).filter(r=>String(r.msdl ?? r.agCode)===String(code));
     }
     pendingRowsLatest = latestPendingSrc;
     pipelineRowsLatest = latestPipelineSrc;
