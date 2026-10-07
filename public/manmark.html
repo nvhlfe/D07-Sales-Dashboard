@@ -481,7 +481,7 @@ function officialActualsForCode(code, weeks){
   officialMonthDates.forEach(dateStr=>{
     const day = parseInt(dateStr.slice(8,10));
     const a = officialMonthAgents[dateStr]?.[code];
-    const cur = a ? { fyp:Number(a.fyp||0), fyc:Number(a.fyc||0), caseNet:Number(a.caseNet||0), ipNet:Number(a.ipNet||0) } : prev;
+    const cur = a ? { fyp:Number(a.fyp||0)/UNIT_DIV, fyc:Number(a.fyc||0)/UNIT_DIV, caseNet:Number(a.caseNet||0), ipNet:Number(a.ipNet||0)/UNIT_DIV } : prev;
     const wIdx = weeks.findIndex(w=>day>=w.start && day<=w.end);
     if(wIdx!==-1){
       res[wIdx].fyp += cur.fyp - prev.fyp;
@@ -498,7 +498,7 @@ function officialActualsForCode(code, weeks){
 function officialLatestForCode(code){
   for(let i=officialMonthDates.length-1;i>=0;i--){
     const a = officialMonthAgents[officialMonthDates[i]]?.[code];
-    if(a) return { fyp:Number(a.fyp||0), fyc:Number(a.fyc||0), caseNet:Number(a.caseNet||0), ipNet:Number(a.ipNet||0) };
+    if(a) return { fyp:Number(a.fyp||0)/UNIT_DIV, fyc:Number(a.fyc||0)/UNIT_DIV, caseNet:Number(a.caseNet||0), ipNet:Number(a.ipNet||0)/UNIT_DIV };
   }
   return { fyp:0, fyc:0, caseNet:0, ipNet:0 };
 }
@@ -708,9 +708,12 @@ function confirmMapping(){
   renderAll();
 }
 function num(v){ const n=Number(v); return isNaN(n)?0:n; }
+// Số thực đạt (FYP/FYC/APE...) trong dữ liệu gốc tính bằng đồng; cam kết (plan) nhập theo nghìn đồng.
+// => chia 1.000 ở nguồn để Cam kết và Thực đạt cùng đơn vị (VD 20.155.000 → 20.155).
+const UNIT_DIV = 1000;
 
 // ── Render ──
-function fmt(n){ return Number(n||0).toLocaleString('vi-VN'); }
+function fmt(n){ return Math.round(Number(n||0)).toLocaleString('vi-VN'); }
 function escAttr(s){ return String(s||'').replace(/"/g,'&quot;'); }
 function currentWeeks(){ return manmark.weeks && manmark.weeks.length ? manmark.weeks : defaultWeeks(currentMonth()); }
 
@@ -848,7 +851,7 @@ function actualsForPerson(person, weeks){
     if(wIdx===-1) return;
     const cases = person.daily[dayKey]?.cases||[];
     cases.forEach(c=>{
-      const fee = Number(c.fee||0);
+      const fee = Number(c.fee||0)/UNIT_DIV;
       res[wIdx].fyp += fee; res[wIdx].hs += 1;
       if(c.status==='issued'){ res[wIdx].confirmedFyp += fee; res[wIdx].confirmedHs += 1; }
       else { res[wIdx].potentialFyp += fee; res[wIdx].potentialHs += 1; }
@@ -863,7 +866,7 @@ function actualsForPerson(person, weeks){
 // không còn tự lưu danh sách hồ sơ nữa).
 function pendingValueByCode(code){
   const statuses = pendingDoc.statuses || {};
-  const norm = r => ({ proposalNum:r.proposalNum, productName:r.product, ape:r.ape, proposalDate:r.proposalDate, msdl:r.msdl });
+  const norm = r => ({ proposalNum:r.proposalNum, productName:r.product, ape:Number(r.ape||0)/UNIT_DIV, proposalDate:r.proposalDate, msdl:r.msdl });
   const pendingMine = officialLatestPendingPipeline.pendingRows
     .filter(r=> String(r.msdl||'').trim()===String(code).trim() && (statuses[`${r.proposalNum}::${r.msdl}`] ?? statuses[String(r.proposalNum)]) !=='WD')
     .map(norm);
@@ -885,7 +888,7 @@ function monthlyTrendForCode(code){
     const person = (h.reportData||[]).find(p=>String(p?.msdl||'').trim()===String(code).trim());
     let actual = 0;
     if(person && person.daily){
-      Object.values(person.daily).forEach(d=>{ (d?.cases||[]).forEach(c=>{ actual += Number(c.fee||0); }); });
+      Object.values(person.daily).forEach(d=>{ (d?.cases||[]).forEach(c=>{ actual += Number(c.fee||0)/UNIT_DIV; }); });
     }
     months.push({ m, commit, actual });
   }
