@@ -41,6 +41,9 @@
   th.col-sticky{background:#eef2ff;z-index:6}
   .col-name{min-width:140px;text-align:left;font-weight:600}
   .week-head{background:#e0e7ff!important}
+  body.compact #mainTable td, body.compact #mainTable th{padding-top:2px!important;padding-bottom:2px!important;font-size:10px}
+  body.compact .breakdown{display:none}
+  body.compact .cell-edit,body.compact .note-edit{padding:0 3px}
   .new-badge{background:#fee2e2;color:#b91c1c;font-size:9px;font-weight:700;padding:1px 5px;border-radius:5px;margin-left:4px}
   .cell-edit{width:56px;border:1px solid transparent;border-radius:5px;padding:2px 4px;font-size:11px;text-align:right;background:transparent}
   .cell-edit:hover{border-color:#dde3f8}
@@ -144,6 +147,19 @@
       <option value="salesreport">Sales Report (nhập tay)</option>
       <option value="official">TVV Hàng Ngày (chính thức)</option>
     </select>
+  </div>
+  <div class="tool-sep"></div>
+  <div class="tool-group">
+    <span class="tool-label">Xem nhanh</span>
+    <select id="quickViewSelect" class="compact" onchange="setView('quick',this.value)">
+      <option value="all">Tất cả TVV</option>
+      <option value="warn">⚠️ Trễ cam kết ≥2 tuần</option>
+      <option value="below">Chưa đạt cam kết tháng</option>
+      <option value="fcLow">Dự báo thấp hơn cam kết</option>
+      <option value="new">Chưa có cam kết</option>
+    </select>
+    <select id="weekViewSelect" class="compact" onchange="setView('week',this.value)" title="Chỉ hiện cột của 1 tuần"></select>
+    <button class="btn btn-gray" id="densityBtn" onclick="toggleDensity()" title="Thu gọn dòng để xem được nhiều TVV hơn">↕ Gọn</button>
   </div>
   <div class="tool-sep"></div>
   <button class="btn btn-blue" onclick="openWeekConfig()">📅 Cấu hình tuần</button>
@@ -319,6 +335,25 @@ function defaultManmark(){
 }
 let sortState = { col: 'name', dir: 'asc' };
 let filterState = {};
+let viewState = Object.assign({ quick:'all', week:'all', compact:false }, JSON.parse(localStorage.getItem('manmarkView')||'{}'));
+function saveView(){ localStorage.setItem('manmarkView', JSON.stringify(viewState)); }
+function currentWeekIdx(){
+  const ws = currentWeeks(), d = new Date();
+  if(currentMonth()!==d.getMonth()+1 || currentYear()!==d.getFullYear()) return -1;
+  return ws.findIndex(w=>d.getDate()>=w.start && d.getDate()<=w.end);
+}
+function wkVisible(wi){
+  const v = viewState.week;
+  if(v==='all') return true;
+  if(v==='cur') { const c=currentWeekIdx(); return c===-1 || c===wi; }
+  return String(wi)===String(v);
+}
+function setView(k,v){ viewState[k]=v; saveView(); renderAll(); }
+function toggleDensity(){ viewState.compact=!viewState.compact; saveView(); applyDensity(); }
+function applyDensity(){
+  document.body.classList.toggle('compact', !!viewState.compact);
+  const b=document.getElementById('densityBtn'); if(b) b.textContent = viewState.compact ? '↕ Rộng' : '↕ Gọn';
+}
 function currentMonth(){ return parseInt(document.getElementById('monthSelect').value||'1'); }
 function currentYear(){ return parseInt(document.getElementById('yearSelect').value||'2026'); }
 function mmKey(){ return `${currentYear()}-${currentMonth()}`; }
@@ -717,7 +752,16 @@ function fmt(n){ return Math.round(Number(n||0)).toLocaleString('vi-VN'); }
 function escAttr(s){ return String(s||'').replace(/"/g,'&quot;'); }
 function currentWeeks(){ return manmark.weeks && manmark.weeks.length ? manmark.weeks : defaultWeeks(currentMonth()); }
 
-function renderAll(){ renderHeader(); renderBody(); }
+function syncViewControls(){
+  const ws=currentWeeks(), sel=document.getElementById('weekViewSelect'); if(!sel) return;
+  sel.innerHTML = `<option value="all">Tất cả tuần</option><option value="cur">Tuần hiện tại</option>` +
+    ws.map((w,i)=>`<option value="${i}">${escAttr(w.label)} (${w.start}–${w.end})</option>`).join('');
+  if(!Array.from(sel.options).some(o=>o.value===String(viewState.week))) viewState.week='all';
+  sel.value = String(viewState.week);
+  document.getElementById('quickViewSelect').value = viewState.quick;
+  applyDensity();
+}
+function renderAll(){ syncViewControls(); renderHeader(); renderBody(); }
 
 function arrow(colId){ return sortState.col===colId ? `<span class="sort-arrow">${sortState.dir==='asc'?'▲':'▼'}</span>` : ''; }
 function toggleSort(colId){
@@ -760,9 +804,10 @@ function renderHeader(){
     <th class="grp-actual sortable" rowspan="3" style="min-width:100px" onclick="toggleSort('monthActual')">Thực đạt tháng${arrow('monthActual')}</th>
     <th class="grp-pending sortable" rowspan="3" style="min-width:80px" onclick="toggleSort('pending')" title="Tổng APE hồ sơ đang chờ xử lý (chưa PH, chưa rút)">Pending${arrow('pending')}</th>
     <th class="grp-forecast sortable" rowspan="3" style="min-width:90px" onclick="toggleSort('forecast')" title="Đã chắc + 50% tiềm năng + 30% pending">Dự báo tháng${arrow('forecast')}</th>`;
-  weeks.forEach(w=>{ thead += `<th class="week-head" colspan="5">${escAttr(w.label)} (${w.start}–${w.end})</th>`; });
+  weeks.forEach((w,wi)=>{ if(!wkVisible(wi)) return; thead += `<th class="week-head" colspan="5">${escAttr(w.label)} (${w.start}–${w.end})</th>`; });
   thead += `<th rowspan="3" style="min-width:34px">Xoá</th></tr><tr>`;
   weeks.forEach((w,wi)=>{
+    if(!wkVisible(wi)) return;
     ['ckfyp','tdfyp','ckhs','tdhs','note'].forEach(f=>{
       const id = `w${wi}_${f}`;
       const lbl = {ckfyp:'CK FYP', tdfyp:'TĐ FYP', ckhs:'CK HS', tdhs:'TĐ HS', note:'Ghi chú'}[f];
@@ -780,6 +825,7 @@ function renderHeader(){
     <th class="grp-pending"><input class="filter-input" oninput="onFilterInput('pending',this.value)" value="${escAttr(filterState.pending)}"/></th>
     <th class="grp-forecast"><input class="filter-input" oninput="onFilterInput('forecast',this.value)" value="${escAttr(filterState.forecast)}"/></th>`;
   weeks.forEach((w,wi)=>{
+    if(!wkVisible(wi)) return;
     ['ckfyp','tdfyp','ckhs','tdhs','note'].forEach(f=>{
       const id = `w${wi}_${f}`;
       const grp = (f==='tdfyp'||f==='tdhs') ? 'grp-actual' : '';
@@ -1046,6 +1092,11 @@ function isNumericCol(colId){ return colId!=='unit' && colId!=='segment' && colI
 
 function applyFiltersSort(rows){
   let out = rows;
+  const q = viewState.quick;
+  if(q==='warn')  out = out.filter(r=>r.maxConsecutiveMiss>=2);
+  if(q==='below') out = out.filter(r=>r.monthTarget>0 && r.monthActual<r.monthTarget);
+  if(q==='fcLow') out = out.filter(r=>r.monthTarget>0 && r.forecast<r.monthTarget);
+  if(q==='new')   out = out.filter(r=>r.isNew);
   Object.keys(filterState).forEach(colId=>{
     const f = filterState[colId];
     if(colId==='unit' || colId==='segment'){
@@ -1105,6 +1156,7 @@ function renderBody(){
     row.weeks.forEach((wd,wi)=>{
       weekTotals[wi].ckFyp += wd.ckfyp; weekTotals[wi].tdFyp += wd.tdfyp;
       weekTotals[wi].ckHs += wd.ckhs; weekTotals[wi].tdHs += wd.tdhs;
+      if(!wkVisible(wi)) return;
       tbody += `
         <td><input class="cell-edit" type="number" value="${wd.ckfyp||''}" onchange="updateCommitWeek('${row.code}',${wi},'fyp',this.value)"/></td>
         <td class="actual-cell grp-actual ${statusClass(wd.tdfyp,wd.ckfyp)}">${fmt(wd.tdfyp)}
@@ -1123,7 +1175,8 @@ function renderBody(){
     <td>${fmt(totalMonthActual)}</td>
     <td>${fmt(totalPending)}</td>
     <td>${fmt(Math.round(totalForecast))}</td>`;
-  weekTotals.forEach(wt=>{
+  weekTotals.forEach((wt,wi)=>{
+    if(!wkVisible(wi)) return;
     tbody += `<td>${fmt(wt.ckFyp)}</td><td>${fmt(wt.tdFyp)}</td><td>${fmt(wt.ckHs)}</td><td>${fmt(wt.tdHs)}</td><td></td>`;
   });
   tbody += `<td></td></tr>`;
@@ -1422,7 +1475,7 @@ initSelectors();
 renderAll();
 
 Object.assign(window, {
-  openLoginModal, closeLoginModal, doLogin, logoutApp,
+  openLoginModal, closeLoginModal, doLogin, logoutApp, setView, toggleDensity,
   openWeekConfig, closeWeekConfig, addWeekRow, resetWeekDefault, saveWeekConfig,
   openUploadModal, closeUploadModal, parseUploadedFile,
   closeMapModal, confirmMapping,
@@ -1433,5 +1486,6 @@ Object.assign(window, {
   openLegacyCheckModal, closeLegacyCheckModal, migrateLegacyMonth,
 });
 </script>
+<script type="module" src="/sso-embed.js?lock=1"></script>
 </body>
 </html>

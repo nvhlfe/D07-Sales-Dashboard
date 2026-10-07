@@ -304,7 +304,15 @@ function Toast({ message, type, onClose }) {
 
 // ── Main App ──────────────────────────────────────────────────
 export default function App() {
-  const [activeTab,   setActiveTab]   = useState('dashboard')
+  const IFRAME_TABS = ['sales','pending','manmark','tvvdaily']
+  const validTab = id => NAV_ITEMS.some(n => n.id === id)
+  const [activeTab,   setActiveTab]   = useState(() => {
+    const h = window.location.hash.replace('#','')
+    if (validTab(h)) return h
+    const last = localStorage.getItem('d07_last_tab')
+    return validTab(last) ? last : 'dashboard'
+  })
+  const [visited, setVisited] = useState(() => new Set())
   const [data,        setData]        = useState(EMPTY_DATA)
   const [loading,     setLoading]     = useState(false)
   const [syncing,     setSyncing]     = useState(false)
@@ -313,7 +321,7 @@ export default function App() {
   const [toast,       setToast]       = useState(null)
   const [dragOver,    setDragOver]    = useState(false)
   const [showFBSetup, setShowFBSetup] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('d07_sidebar') !== '0')
   const [isMobile,    setIsMobile]    = useState(window.innerWidth <= 768)
   const [currentUser, setCurrentUser] = useState(null)
   const [isAdmin,     setIsAdmin]     = useState(false)
@@ -338,6 +346,8 @@ export default function App() {
       const auth = getAuth(app)
       authRef.current = auth
       onAuthStateChanged(auth, (user) => {
+        // báo cho các tab nhúng (iframe) biết trạng thái đăng nhập chung
+        document.querySelectorAll('iframe').forEach(f => f.contentWindow?.postMessage({ type: 'd07-auth', loggedIn: !!user }, window.location.origin))
         setCurrentUser(user)
         setIsAdmin(!!user && user.email === ADMIN_EMAIL)
       })
@@ -368,6 +378,25 @@ export default function App() {
   useEffect(() => {
     connectFirebase(FIREBASE_CONFIG)
     return () => { if (unsubRef.current) unsubRef.current() }
+  }, [])
+
+  // Nhớ tab đang xem (hash + localStorage), giữ các tab iframe đã mở để không phải tải lại
+  useEffect(() => {
+    localStorage.setItem('d07_last_tab', activeTab)
+    if (window.location.hash !== '#' + activeTab) history.replaceState(null, '', '#' + activeTab)
+    setVisited(v => (v.has(activeTab) ? v : new Set(v).add(activeTab)))
+  }, [activeTab])
+  useEffect(() => {
+    const onHash = () => { const h = window.location.hash.replace('#',''); if (validTab(h)) setActiveTab(h) }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+  useEffect(() => { localStorage.setItem('d07_sidebar', sidebarOpen ? '1' : '0') }, [sidebarOpen])
+  // Tab nhúng yêu cầu đăng nhập → mở popup đăng nhập chung
+  useEffect(() => {
+    const onMsg = e => { if (e.origin === window.location.origin && e.data?.type === 'd07-login') setShowLogin(true) }
+    window.addEventListener('message', onMsg)
+    return () => window.removeEventListener('message', onMsg)
   }, [])
 
   // Mobile detection
@@ -607,12 +636,18 @@ export default function App() {
             {activeTab === 'ga'        && <GATab        data={data} />}
             {activeTab === 'um'        && <UMTab        data={data} />}
             {activeTab === 'tvv'       && <TVVTab       data={data} />}
-            {activeTab === 'sales'     && <SalesReportTab />}
-            {activeTab === 'pending'   && <PendingTab />}
-            {activeTab === 'manmark'   && <ManMarkTab />}
-            {activeTab === 'tvvdaily'  && <TvvDailyTab />}
           </ErrorBoundary>
         )}
+
+        {/* Tab nhúng giữ nguyên trạng thái (bộ lọc, cuộn, dữ liệu) khi chuyển qua lại */}
+        {IFRAME_TABS.map(id => (visited.has(id) || activeTab === id) && (
+          <div key={id} style={{ display: activeTab === id ? 'block' : 'none' }}>
+            {id === 'sales' && <SalesReportTab />}
+            {id === 'pending' && <PendingTab />}
+            {id === 'manmark' && <ManMarkTab />}
+            {id === 'tvvdaily' && <TvvDailyTab />}
+          </div>
+        ))}
 
         {dragOver && (
           <div style={{ position:'fixed', inset:0, background:'rgba(67,97,238,0.15)',
