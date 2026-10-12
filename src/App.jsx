@@ -297,6 +297,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('d07_sidebar') !== '0')
   const [isMobile,    setIsMobile]    = useState(window.innerWidth <= 768)
   const [showLogin,   setShowLogin]   = useState(false)
+  const [salesVisited, setSalesVisited] = useState(false) // giữ iframe sales không reload khi chuyển tab
   const fileInputRef = useRef()
 
   // ── Data layer dùng chung (src/lib/db.js) ──
@@ -311,6 +312,7 @@ export default function App() {
   // Nhớ tab đang xem (hash + localStorage)
   useEffect(() => {
     localStorage.setItem('d07_last_tab', activeTab)
+    if (activeTab === 'sales') setSalesVisited(true) // mở 1 lần, giữ iframe sales sống
     if (window.location.hash !== '#' + activeTab) history.replaceState(null, '', '#' + activeTab)
   }, [activeTab])
   useEffect(() => {
@@ -557,10 +559,16 @@ export default function App() {
             {activeTab === 'ga'        && <GATab        data={data} />}
             {activeTab === 'um'        && <UMTab        data={data} />}
             {activeTab === 'tvv'       && <TVVTab       data={data} />}
-            {activeTab === 'sales'     && <SalesReportTab />}
             {activeTab === 'manmark'   && <ManMarkTab />}
             {activeTab === 'tvvdaily'  && <TvvDailyTab />}
           </ErrorBoundary>
+        )}
+
+        {/* Tab Sales Report giữ cấu trúc iframe cũ — giữ nguyên trạng thái khi chuyển qua lại */}
+        {salesVisited && (
+          <div style={{ display: activeTab === 'sales' ? 'block' : 'none' }}>
+            <SalesReportTab />
+          </div>
         )}
 
         {dragOver && (
