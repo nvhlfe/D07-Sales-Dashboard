@@ -169,14 +169,14 @@ export default function DashboardTab({ data, onNavigate }) {
       </div>
 
       {/* ── Target progress ── */}
-      <TargetProgress gaData={data?.gaData} availableMonths={availableMonths} />
+      <TargetProgress gaData={data?.gaData} availableMonths={excelMonths} />
 
       {/* ── YoY comparison (2025 vs 2026) ── */}
       <YoYComparison yoy={data?.gaData} />
 
       {/* ── Trend chart (multi-month) ── */}
       <div style={{ marginBottom:16 }}>
-        <TrendChart monthlyKpis={monthlyKpis} availableMonths={availableMonths} />
+        <TrendChart monthlyKpis={monthlyKpis} availableMonths={excelMonths} />
       </div>
 
       {/* ── Top agents (full width, Top 20) ── */}
