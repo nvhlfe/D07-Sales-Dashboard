@@ -1,28 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { initializeApp, getApps } from 'firebase/app'
-import { getDatabase, ref, onValue, set } from 'firebase/database'
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth'
 import { parseExcelFile } from './utils/parseExcel'
+import {
+  initFirebase, useDashboardDoc, useAuth, publishDashboardData,
+} from './lib/db'
 import DashboardTab from './components/DashboardTab'
 import GATab from './components/GATab'
 import UMTab from './components/UMTab'
 import TVVTab from './components/TVVTab'
 import SalesReportTab from './components/SalesReportTab'
-import PendingTab from './components/PendingTab'
 import ManMarkTab from './components/ManMarkTab'
 import TvvDailyTab from './components/TvvDailyTab'
 
-// ── Firebase config — tự động kết nối cho tất cả users ──────
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyASY63DlWIkvjybM1enPIpdZkxXJjrStQA",
-  authDomain: "d07-sales-dashboard.firebaseapp.com",
-  databaseURL: "https://d07-sales-dashboard-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "d07-sales-dashboard",
-  storageBucket: "d07-sales-dashboard.firebasestorage.app",
-  messagingSenderId: "820808715064",
-  appId: "1:820808715064:web:62865b8b03b18b6a670fcd",
-}
-const ADMIN_EMAIL = 'admin@d07.com'
+// ── Firebase config & data layer: xem src/lib/db.js ─────────────────
+// (toàn bộ init, auth, read/write tập trung tại db.js — single source of truth)
 // ─────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
@@ -31,7 +21,6 @@ const NAV_ITEMS = [
   { id: 'um',        label: 'UM',        icon: '👤' },
   { id: 'tvv',       label: 'TVV',       icon: '🧑‍💼' },
   { id: 'sales',     label: 'Sales Report', icon: '📋' },
-  { id: 'pending',   label: 'Pending',   icon: '⏳' },
   { id: 'manmark',   label: 'ManMark',   icon: '📆' },
   { id: 'tvvdaily',  label: 'TVV Hàng Ngày', icon: '📈' },
 ]
@@ -39,7 +28,6 @@ const TAB_TITLES = {
   dashboard: 'Dashboard Tổng Quan — GA D07 Quận 7',
   ga: 'GA Tổng Hợp', um: 'Danh Sách UM', tvv: 'Danh Sách TVV',
   sales: 'D07 — Theo Dõi Doanh Số 2026',
-  pending: 'Theo Dõi Hồ Sơ Đang Chờ',
   manmark: 'ManMark — Cam Kết Tuần',
   tvvdaily: 'Theo Dõi Kinh Doanh TVV Hàng Ngày',
 }
@@ -69,20 +57,8 @@ const EMPTY_DATA = {
   umList: [], agList: [],
 }
 
-const FB_PATH = 'ga_d07/dashboard'
-const FB_CHUNK = 800_000
+// (chunked RTDB read/write đã chuyển vào src/lib/db.js)
 
-function chunkJSON(json) {
-  const out = []
-  for (let i = 0; i < json.length; i += FB_CHUNK) out.push(json.slice(i, i + FB_CHUNK))
-  return out
-}
-function assembleSnapshot(snapshot) {
-  const val = snapshot.val()
-  if (!val?.chunks) return null
-  try { return { data: JSON.parse(val.chunks.join('')), updatedAt: val.updatedAt } }
-  catch { return null }
-}
 
 // ── Firebase Setup Modal ──────────────────────────────────────
 function FirebaseSetupModal({ onSave, onClose, current }) {
@@ -304,7 +280,6 @@ function Toast({ message, type, onClose }) {
 
 // ── Main App ──────────────────────────────────────────────────
 export default function App() {
-  const IFRAME_TABS = ['sales','pending','manmark','tvvdaily']
   const validTab = id => NAV_ITEMS.some(n => n.id === id)
   const [activeTab,   setActiveTab]   = useState(() => {
     const h = window.location.hash.replace('#','')
@@ -312,79 +287,31 @@ export default function App() {
     const last = localStorage.getItem('d07_last_tab')
     return validTab(last) ? last : 'dashboard'
   })
-  const [visited, setVisited] = useState(() => new Set())
   const [data,        setData]        = useState(EMPTY_DATA)
   const [loading,     setLoading]     = useState(false)
   const [syncing,     setSyncing]     = useState(false)
-  const [fbStatus,    setFbStatus]    = useState('disconnected')
   const [lastUpdated, setLastUpdated] = useState(null)
   const [toast,       setToast]       = useState(null)
   const [dragOver,    setDragOver]    = useState(false)
   const [showFBSetup, setShowFBSetup] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('d07_sidebar') !== '0')
   const [isMobile,    setIsMobile]    = useState(window.innerWidth <= 768)
-  const [currentUser, setCurrentUser] = useState(null)
-  const [isAdmin,     setIsAdmin]     = useState(false)
   const [showLogin,   setShowLogin]   = useState(false)
   const fileInputRef = useRef()
-  const unsubRef     = useRef(null)
-  const dbRef        = useRef(null)
-  const authRef      = useRef(null)
 
-  // ── Connect Firebase ──
-  const connectFirebase = (config) => {
-    try {
-      // Cleanup old listener
-      if (unsubRef.current) { unsubRef.current(); unsubRef.current = null }
+  // ── Data layer dùng chung (src/lib/db.js) ──
+  // init Firebase 1 lần (singleton); doc tổng quan realtime; auth tập trung.
+  const { data: fbData, updatedAt: fbUpdatedAt, status: fbStatus } = useDashboardDoc()
+  const { user: currentUser, isAdmin, login: authLogin, logout: authLogout } = useAuth()
 
-      const app = getApps().length ? getApps()[0] : initializeApp(config)
-      const database = getDatabase(app)
-      dbRef.current = database
-      setFbStatus('connecting')
+  useEffect(() => { initFirebase() }, [])
+  useEffect(() => { if (fbData) setData(fbData) }, [fbData])
+  useEffect(() => { if (fbUpdatedAt) setLastUpdated(fbUpdatedAt) }, [fbUpdatedAt])
 
-      // Auth: theo dõi đăng nhập admin (chỉ admin@d07.com mới được upload Excel)
-      const auth = getAuth(app)
-      authRef.current = auth
-      onAuthStateChanged(auth, (user) => {
-        // báo cho các tab nhúng (iframe) biết trạng thái đăng nhập chung
-        document.querySelectorAll('iframe').forEach(f => f.contentWindow?.postMessage({ type: 'd07-auth', loggedIn: !!user }, window.location.origin))
-        setCurrentUser(user)
-        setIsAdmin(!!user && user.email === ADMIN_EMAIL)
-      })
-
-      unsubRef.current = onValue(
-        ref(database, FB_PATH),
-        (snapshot) => {
-          const result = assembleSnapshot(snapshot)
-          if (result) {
-            setData(result.data)
-            setLastUpdated(result.updatedAt)
-          }
-          setFbStatus('connected')
-        },
-        (err) => {
-          console.error('FB:', err)
-          setFbStatus('error')
-        }
-      )
-    } catch (e) {
-      console.error('FB init:', e)
-      setFbStatus('error')
-      setToast({ message: 'Firebase lỗi: ' + e.message, type: 'error' })
-    }
-  }
-
-  // Auto-connect Firebase on mount using hardcoded config
-  useEffect(() => {
-    connectFirebase(FIREBASE_CONFIG)
-    return () => { if (unsubRef.current) unsubRef.current() }
-  }, [])
-
-  // Nhớ tab đang xem (hash + localStorage), giữ các tab iframe đã mở để không phải tải lại
+  // Nhớ tab đang xem (hash + localStorage)
   useEffect(() => {
     localStorage.setItem('d07_last_tab', activeTab)
     if (window.location.hash !== '#' + activeTab) history.replaceState(null, '', '#' + activeTab)
-    setVisited(v => (v.has(activeTab) ? v : new Set(v).add(activeTab)))
   }, [activeTab])
   useEffect(() => {
     const onHash = () => { const h = window.location.hash.replace('#',''); if (validTab(h)) setActiveTab(h) }
@@ -392,12 +319,6 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
   useEffect(() => { localStorage.setItem('d07_sidebar', sidebarOpen ? '1' : '0') }, [sidebarOpen])
-  // Tab nhúng yêu cầu đăng nhập → mở popup đăng nhập chung
-  useEffect(() => {
-    const onMsg = e => { if (e.origin === window.location.origin && e.data?.type === 'd07-login') setShowLogin(true) }
-    window.addEventListener('message', onMsg)
-    return () => window.removeEventListener('message', onMsg)
-  }, [])
 
   // Mobile detection
   useEffect(() => {
@@ -412,19 +333,17 @@ export default function App() {
 
   const handleFBSave = (cfg) => {
     setShowFBSetup(false)
-    connectFirebase(cfg)
+    initFirebase(cfg) // singleton: tái sử dụng app đã init (giữ đúng behavior cũ)
     setToast({ message: 'Đang kết nối Firebase...', type: 'success' })
   }
 
-  // ── Auth handlers ──
+  // ── Auth handlers (qua db.js) ──
   const handleLogin = async (email, password) => {
-    if (!authRef.current) throw new Error('Chưa kết nối Firebase')
-    await signInWithEmailAndPassword(authRef.current, email, password)
+    await authLogin(email, password)
     setToast({ message: '✓ Đăng nhập thành công', type: 'success' })
   }
   const handleLogout = async () => {
-    if (!authRef.current) return
-    await signOut(authRef.current)
+    await authLogout()
     setToast({ message: 'Đã đăng xuất', type: 'success' })
   }
 
@@ -459,19 +378,21 @@ export default function App() {
         })
       }
 
-      if (dbRef.current) {
+      // Publish qua data layer (db.js) — giữ nguyên cơ chế chunked RTDB
+      try {
         setSyncing(true)
-        await set(ref(dbRef.current, FB_PATH), {
-          chunks: chunkJSON(JSON.stringify(parsed)),
-          total: 1,
-          updatedAt: new Date().toISOString(),
-        })
-        setSyncing(false)
+        const updatedAt = await publishDashboardData(parsed)
+        setLastUpdated(updatedAt)
         if (!parsed._warnings?.length) {
           setToast({ message: `✓ Đã tải & đồng bộ realtime cho tất cả users`, type: 'success' })
         }
-      } else if (!parsed._warnings?.length) {
-        setToast({ message: `✓ Đã tải "${file.name}" (chỉ local — chưa kết nối Firebase)`, type: 'success' })
+      } catch (e) {
+        console.error('Publish:', e)
+        if (!parsed._warnings?.length) {
+          setToast({ message: `✓ Đã tải "${file.name}" (chỉ local — chưa kết nối Firebase)`, type: 'success' })
+        }
+      } finally {
+        setSyncing(false)
       }
     } catch (err) {
       setSyncing(false)
@@ -636,18 +557,11 @@ export default function App() {
             {activeTab === 'ga'        && <GATab        data={data} />}
             {activeTab === 'um'        && <UMTab        data={data} />}
             {activeTab === 'tvv'       && <TVVTab       data={data} />}
+            {activeTab === 'sales'     && <SalesReportTab />}
+            {activeTab === 'manmark'   && <ManMarkTab />}
+            {activeTab === 'tvvdaily'  && <TvvDailyTab />}
           </ErrorBoundary>
         )}
-
-        {/* Tab nhúng giữ nguyên trạng thái (bộ lọc, cuộn, dữ liệu) khi chuyển qua lại */}
-        {IFRAME_TABS.map(id => (visited.has(id) || activeTab === id) && (
-          <div key={id} style={{ display: activeTab === id ? 'block' : 'none' }}>
-            {id === 'sales' && <SalesReportTab />}
-            {id === 'pending' && <PendingTab />}
-            {id === 'manmark' && <ManMarkTab />}
-            {id === 'tvvdaily' && <TvvDailyTab />}
-          </div>
-        ))}
 
         {dragOver && (
           <div style={{ position:'fixed', inset:0, background:'rgba(67,97,238,0.15)',
