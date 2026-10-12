@@ -69,3 +69,13 @@ Ngày: 09/10/2026 · Người thực hiện: Muse (theo yêu cầu của Lan)
 
 **Kiểm chứng:** `npm run build` ✅ pass (vite 11.4s). Không thêm dependency mới
 (recharts/xlsx đã có sẵn được tái dùng thay Chart.js CDN).
+
+## Đợt 3 — TOP 60 ở Tổng Quan lấy từ Daily Sales (12/10/2026)
+
+- Khi admin bấm **Lưu** file Daily Sales ở tab *TVV Hàng Ngày*, ngoài doc Firestore `daily_sales_tvv/{ngày}`,
+  hệ thống ghi thêm snapshot gọn vào RTDB `ga_d07/daily_top/{yyyy-m}` (đọc công khai, ghi cần đăng nhập —
+  khớp `database.rules.json`, **không cần sửa rules**). Chỉ ghi nếu ngày nhập ≥ ngày snapshot đang có.
+- `src/lib/db.js`: thêm `buildDailyTopSnapshot`, `publishDailyTop`, `useDailyTopDoc`.
+- `TvvDailyTab.jsx`: parse thêm `level, apeNet, netMp, actFyc, actCase, fypYtd, fycYtd`; gọi `publishDailyTop` sau khi lưu.
+- `DashboardTab.jsx`: TOP 60 dùng Daily Sales khi có (tháng mới nhất / tháng chưa có trong Excel tháng);
+  nút chọn nguồn 📡 Daily ⇄ 📑 Excel tháng; tháng chỉ có Daily thì 8 thẻ KPI lấy tổng từ Daily (không hiện % so tháng trước).

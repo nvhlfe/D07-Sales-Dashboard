@@ -10,7 +10,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { collection, getDocs } from 'firebase/firestore'
 import {
   useDailySalesDoc, saveDailySalesDoc, useAuth,
-  normalizeAgent, dateKey, getDocOnce, getFirebase,
+  normalizeAgent, dateKey, getDocOnce, getFirebase, publishDailyTop,
 } from '../lib/db'
 
 // ---------- HELPERS (giữ nguyên logic file gốc) ----------
@@ -82,6 +82,10 @@ function parseWorkbook(arrayBuffer) {
       msdl, agName: r['AGName'] || '', agSeg: r['AGSegName'] || '',
       ipSub: num(r['IP Sub']), caseSub: num(r['Case Sub']), fyp: num(r['FYP']),
       ipNet: num(r['IP Net']), caseNet: num(r['Case Net']), fyc: num(r['FYC']),
+      // Bổ sung cho Tổng Quan (TOP 60 + thẻ KPI): cấp bậc, APE, active, lũy kế
+      level: r['AGLevel'] || '', apeNet: num(r['APE Net']), netMp: num(r['Net Manpower']),
+      actFyc: num(r['Active Net (FYC)']), actCase: num(r['Active Net (Case)']),
+      fypYtd: num(r['FYP YTD']), fycYtd: num(r['FYC YTD']),
       cIF: 0, cPS: 0, cOther: 0,
     }
   }
@@ -374,7 +378,19 @@ export default function TvvDailyTab() {
         agents: parsed.agents, units: parsed.units,
         proposalRows: parsed.proposalRows, pendingRows: parsed.pendingRows, pipelineRows: parsed.pipelineRows,
       }, user?.email || null)
-      setUploadMsg({ type: 'success', text: `✔ Đã lưu dữ liệu ngày ${uploadDate}.` })
+      // Đẩy snapshot gọn lên RTDB để TOP 60 ở Tổng Quan tự cập nhật.
+      // Lỗi ở bước này không làm hỏng việc lưu chính ở trên.
+      let topNote = ''
+      try {
+        const res = await publishDailyTop(uploadDate, parsed.agents)
+        topNote = res.published
+          ? ' TOP 60 ở Tổng Quan đã cập nhật.'
+          : ` ⚠ TOP 60 giữ nguyên số liệu ngày ${res.date} (mới hơn ngày vừa nhập).`
+      } catch (e) {
+        console.error('[TvvDailyTab] publishDailyTop:', e)
+        topNote = ` ⚠ Chưa cập nhật được TOP 60 ở Tổng Quan: ${e.message}`
+      }
+      setUploadMsg({ type: 'success', text: `✔ Đã lưu dữ liệu ngày ${uploadDate}.${topNote}` })
       setParsed(null)
       if (fileRef.current) fileRef.current.value = ''
       await refreshDates(uploadDate)

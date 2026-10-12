@@ -1,9 +1,13 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { formatNum, formatNum2 } from '../utils/parseExcel'
 import TargetProgress from './TargetProgress'
 import TrendChart from './TrendChart'
 import YoYComparison from './YoYComparison'
+import { useDailyTopDoc } from '../lib/db'
+
+const DATA_YEAR = 2026
+const fmtDM = (ymd) => (ymd ? `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}` : '')
 
 const KpiCard = ({ label, value, unit, badge, icon, colorClass = 'c1' }) => (
   <div className={`kpi-card ${colorClass}`}>
@@ -56,16 +60,60 @@ function momBadge(mom) {
 }
 
 export default function DashboardTab({ data, onNavigate }) {
-  const availableMonths = data?.availableMonths || []
-  const monthlyKpis     = data?.monthlyKpis     || {}
-  const latestMonth     = availableMonths[availableMonths.length - 1]
+  const excelMonths = data?.availableMonths || []
+  const monthlyKpis = data?.monthlyKpis     || {}
+
+  // ── Daily Sales (snapshot do tab TVV Hàng Ngày đẩy lên mỗi lần nhập file) ──
+  const { data: dailyTop } = useDailyTopDoc()
+  const dailyOf = (m) => dailyTop?.[`${DATA_YEAR}-${m}`] || null
+  const dailyMonths = Object.keys(dailyTop || {})
+    .filter(key => key.startsWith(`${DATA_YEAR}-`)).map(key => Number(key.split('-')[1]))
+
+  // Tháng nào có trong file Excel tháng HOẶC có Daily Sales đều chọn được
+  const availableMonths = useMemo(
+    () => Array.from(new Set([...excelMonths, ...dailyMonths])).sort((a, b) => a - b),
+    [excelMonths.join(','), dailyMonths.join(',')]
+  )
+  const latestMonth      = availableMonths[availableMonths.length - 1]
+  const latestExcelMonth = excelMonths[excelMonths.length - 1]
 
   const [selectedMonth, setSelectedMonth] = useState(null)
+  const [srcPref, setSrcPref] = useState('auto') // 'auto' | 'daily' | 'excel'
 
   const activeMonth = selectedMonth ?? latestMonth
-  const k = (activeMonth && monthlyKpis[activeMonth]) ? monthlyKpis[activeMonth] : (data?.kpis || {})
-  const top     = k.topAgents    || data?.topAgents    || []
-  const offData = k.officeData   || data?.officeData   || []
+  const daily       = activeMonth ? dailyOf(activeMonth) : null
+  const hasExcel    = excelMonths.includes(activeMonth)
+
+  // Mặc định: tháng mới nhất (hoặc mới hơn file Excel) → ưu tiên Daily Sales;
+  // tháng cũ đã chốt → ưu tiên file Excel tháng. Có thể đổi tay bằng nút chọn nguồn.
+  const useDaily = !!daily && (
+    !hasExcel ||
+    (srcPref === 'daily') ||
+    (srcPref === 'auto' && activeMonth >= latestExcelMonth)
+  )
+
+  // KPI: tháng có file Excel → giữ nguyên; tháng chỉ có Daily → lấy tổng từ Daily
+  const kpiFromDaily = !hasExcel && !!daily
+  const k = hasExcel
+    ? monthlyKpis[activeMonth]
+    : kpiFromDaily ? daily.totals
+    : (data?.kpis || {})
+
+  // Cấp bậc: ưu tiên từ Daily, thiếu thì tra theo mã đại lý từ file Excel tháng
+  const levelByCode = useMemo(() => {
+    const map = {}
+    Object.values(monthlyKpis).forEach(mk => (mk?.topAgents || []).forEach(a => { if (a.code && a.level) map[a.code] = a.level }))
+    ;(data?.topAgents || []).forEach(a => { if (a.code && a.level) map[a.code] = a.level })
+    return map
+  }, [data])
+
+  const top = useDaily
+    ? Object.values(daily.agents || []).slice(0, 60).map(a => ({
+        code: a.code, name: a.name, level: a.level || levelByCode[a.code] || '—',
+        fyp: a.fyp, fyc: a.fyc, ipNet: a.ipNet,
+      }))
+    : (k.topAgents || data?.topAgents || [])
+  const offData = k.officeData || data?.officeData || []
 
   const kpis = [
     { key:'netManpower', label:'NET MANPOWER', value:formatNum(k.netManpower), unit:'đại lý tuyển mới', icon:'👥', colorClass:'c1' },
@@ -76,7 +124,7 @@ export default function DashboardTab({ data, onNavigate }) {
     { key:'activeCase',  label:'ACTIVE (CASE)',value:formatNum(k.activeCase), unit:'đại lý active',     icon:'🔥', colorClass:'c6' },
     { key:'fycYtd',      label:'FYC YTD',      value:formatNum(k.fycYtd),     unit:'lũy kế năm',        icon:'📈', colorClass:'c7' },
     { key:'fypYtd',      label:'FYP YTD',      value:formatNum(k.fypYtd),     unit:'lũy kế năm',        icon:'📊', colorClass:'c8' },
-  ].map(kpi => ({ ...kpi, badge: momBadge(calcMoM(monthlyKpis, availableMonths, activeMonth, kpi.key)) }))
+  ].map(kpi => ({ ...kpi, badge: kpiFromDaily ? null : momBadge(calcMoM(monthlyKpis, excelMonths, activeMonth, kpi.key)) }))
 
   return (
     <div className="page-content">
@@ -99,6 +147,7 @@ export default function DashboardTab({ data, onNavigate }) {
               }}>
               {VN_MONTHS[m]}/2026
               {m === latestMonth && <span style={{ marginLeft:4, fontSize:9, opacity:.8 }}>●</span>}
+              {!excelMonths.includes(m) && <span title="Chỉ có số liệu Daily Sales" style={{ marginLeft:4, fontSize:9, opacity:.8 }}>📡</span>}
             </button>
           )) : (
             <span style={{ fontSize:11, color:'#8896aa' }}>Upload file Excel để xem dữ liệu</span>
@@ -135,9 +184,26 @@ export default function DashboardTab({ data, onNavigate }) {
         <div className="section-header">
           <div className="section-icon">🏆</div>
           TOP 60 ĐẠI LÝ THEO FYP
-          {activeMonth && <span style={{ marginLeft:'auto', fontSize:10, color:'#8896aa', fontWeight:500 }}>
-            T{activeMonth}/2026
-          </span>}
+          <span style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', fontSize:10, color:'#8896aa', fontWeight:500 }}>
+            {daily && hasExcel && (
+              <span style={{ display:'inline-flex', gap:2, background:'#f0f4ff', borderRadius:14, padding:2 }}>
+                {[['daily', '📡 Daily'], ['excel', '📑 Excel tháng']].map(([id, label]) => (
+                  <button key={id} onClick={() => setSrcPref(id)}
+                    style={{
+                      border:'none', cursor:'pointer', borderRadius:12, padding:'3px 10px', fontSize:10.5, fontWeight:700,
+                      background: (useDaily ? 'daily' : 'excel') === id ? '#4361ee' : 'transparent',
+                      color: (useDaily ? 'daily' : 'excel') === id ? 'white' : '#4361ee',
+                    }}>{label}</button>
+                ))}
+              </span>
+            )}
+            {useDaily && (
+              <span style={{ background:'#e6faf2', color:'#065f46', padding:'3px 10px', borderRadius:12, fontWeight:700 }}>
+                📡 Daily Sales {fmtDM(daily.date)}
+              </span>
+            )}
+            {activeMonth && <span>T{activeMonth}/{DATA_YEAR}</span>}
+          </span>
         </div>
         <table className="data-table">
           <thead>
@@ -153,6 +219,9 @@ export default function DashboardTab({ data, onNavigate }) {
             </tr>
           </thead>
           <tbody>
+            {top.length === 0 && (
+              <tr><td colSpan={8} style={{ textAlign:'center', color:'#8896aa', padding:18 }}>Chưa có số liệu cho tháng này</td></tr>
+            )}
             {top.map((ag, i) => {
               // FYC cần thêm = 5 - FYC tháng. Nếu FYC ≥ 5, không thiếu nữa → hiện "-"
               const fycGap = ag.fyc != null ? Math.round((5 - ag.fyc) * 100) / 100 : null
@@ -177,6 +246,9 @@ export default function DashboardTab({ data, onNavigate }) {
         </table>
         <div style={{ marginTop:10, fontSize:11.5, color:'#8896aa' }}>
           Top 60 theo FYP · {top.length} đại lý · "FYC cần thêm" = 5 − FYC tháng (đơn vị triệu VND, ngưỡng PE Vàng)
+          {useDaily
+            ? <> · Nguồn: file Daily Sales ngày {fmtDM(daily.date)} (nhập ở tab TVV Hàng Ngày), chỉ liệt kê đại lý đã phát sinh số liệu</>
+            : <> · Nguồn: file Excel tháng</>}
         </div>
       </div>
 

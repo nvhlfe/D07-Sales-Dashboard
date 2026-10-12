@@ -15,7 +15,7 @@
 // ─────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react'
 import { initializeApp, getApps } from 'firebase/app'
-import { getDatabase, ref, onValue, set } from 'firebase/database'
+import { getDatabase, ref, onValue, set, get } from 'firebase/database'
 import {
   getFirestore, doc, collection, addDoc,
   onSnapshot, setDoc, getDoc,
@@ -140,6 +140,82 @@ export async function publishDashboardData(parsed) {
     updatedAt,
   })
   return updatedAt
+}
+
+// ═════════════════════════════════════════════════════════════
+// DAILY TOP — bản tóm tắt Daily Sales để Tổng Quan hiển thị TOP 60
+// ═════════════════════════════════════════════════════════════
+// Mỗi lần admin lưu file Daily Sales (tab TVV Hàng Ngày), một snapshot gọn
+// của THÁNG đó được ghi vào RTDB `ga_d07/daily_top/{yyyy-m}` (đọc công khai
+// như doc tổng quan, ghi cần đăng nhập — đúng theo database.rules.json).
+// Snapshot chỉ giữ các TVV có phát sinh số liệu + tổng toàn GA, nên rất nhỏ.
+const DAILY_TOP_PATH = 'ga_d07/daily_top'
+const DAILY_TOP_MAX_AGENTS = 150
+const nz = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0 }
+const r2 = (v) => Math.round(nz(v) * 100) / 100
+
+/** Dựng snapshot từ `agents` (object msdl → TVV) đã parse từ sheet Agent. */
+export function buildDailyTopSnapshot(ymd, agents) {
+  const list = Object.values(agents || {})
+  const sum = (k) => list.reduce((s, a) => s + nz(a[k]), 0)
+  const totals = {
+    netManpower: sum('netMp'),
+    fypThang: r2(sum('fyp')),
+    fycThang: r2(sum('fyc')),
+    apeNet: r2(sum('apeNet')),
+    ipNet: r2(sum('ipNet')),
+    caseNet: r2(sum('caseNet')),
+    activeFyc: sum('actFyc'),
+    activeCase: sum('actCase'),
+    fypYtd: r2(sum('fypYtd')),
+    fycYtd: r2(sum('fycYtd')),
+  }
+  const top = list
+    .filter((a) => nz(a.fyp) > 0 || nz(a.fyc) > 0 || nz(a.ipNet) > 0 || nz(a.caseNet) > 0)
+    .sort((a, b) => nz(b.fyp) - nz(a.fyp) || nz(b.fyc) - nz(a.fyc))
+    .slice(0, DAILY_TOP_MAX_AGENTS)
+    .map((a) => ({
+      code: String(a.msdl), name: a.agName || '', level: a.level || '', unit: a.unit || '',
+      fyp: r2(a.fyp), fyc: r2(a.fyc), ipNet: r2(a.ipNet), caseNet: nz(a.caseNet), ape: r2(a.apeNet),
+    }))
+  return { date: ymd, updatedAt: new Date().toISOString(), totals, agents: top }
+}
+
+/**
+ * Ghi snapshot của tháng chứa `ymd`. Chỉ ghi khi ngày upload >= ngày đang lưu,
+ * để nhập bù file cũ không đè lên số liệu mới hơn.
+ * Trả về { published, reason?, date }.
+ */
+export async function publishDailyTop(ymd, agents) {
+  const { rtdb } = getFirebase()
+  const [y, m] = ymd.split('-').map(Number)
+  const node = ref(rtdb, `${DAILY_TOP_PATH}/${yyyyMKey(y, m)}`)
+  const existing = await get(node)
+  const curDate = existing.exists() ? existing.val()?.date : null
+  if (curDate && curDate > ymd) return { published: false, reason: 'older', date: curDate }
+  await set(node, buildDailyTopSnapshot(ymd, agents))
+  return { published: true, date: ymd }
+}
+
+/** Realtime: toàn bộ snapshot theo tháng → { "2026-10": {date, totals, agents[]}, ... } */
+export function useDailyTopDoc() {
+  const [state, setState] = useState({ data: {}, status: 'connecting' })
+  useEffect(() => {
+    let unsub = null
+    try {
+      const { rtdb } = getFirebase()
+      unsub = onValue(
+        ref(rtdb, DAILY_TOP_PATH),
+        (snap) => setState({ data: snap.val() || {}, status: 'connected' }),
+        (err) => { console.error('[db] daily_top onValue:', err); setState((s) => ({ ...s, status: 'error' })) }
+      )
+    } catch (e) {
+      console.error('[db] useDailyTopDoc:', e)
+      setState((s) => ({ ...s, status: 'error' }))
+    }
+    return () => { if (unsub) unsub() }
+  }, [])
+  return state
 }
 
 // ═════════════════════════════════════════════════════════════
