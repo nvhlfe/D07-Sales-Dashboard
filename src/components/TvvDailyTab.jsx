@@ -22,6 +22,14 @@ const excelDateIntToISO = (v) => {
   if (s.length === 8 && /^\d{8}$/.test(s)) return s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8)
   return null
 }
+// Cột YearMonth đôi khi bị Excel lưu dạng text (vd "202609" thay vì số 202609) tuỳ sheet/tuỳ ngày
+// export — kiểm tra bằng ép kiểu số thay vì đòi hỏi typeof 'number' tuyệt đối, để không bị rớt cả sheet
+// (từng gây lỗi "0 TVV" ở sheet Agent khi cột này bị lưu dạng text).
+const isYearMonth = (v) => {
+  if (v === null || v === undefined || v === '') return false
+  const n = Number(v)
+  return !isNaN(n) && n > 200000 && n < 300000
+}
 const sheetToRows = (wb, name) => {
   if (!wb.SheetNames.includes(name)) return null
   return XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null, raw: true })
@@ -58,7 +66,7 @@ function parseWorkbook(arrayBuffer) {
   // --- Proposal (line-item, dùng cho đếm IF/PS/Khác và tab Khác) ---
   const proposalRows = []
   for (const r of (rawProposal || [])) {
-    if (typeof r['Yearmonth'] !== 'number' || !r['AGCode']) continue
+    if (!isYearMonth(r['Yearmonth']) || !r['AGCode']) continue
     const status = (r['PolicyStatus'] || '').toString().trim().toUpperCase()
     const statusGroup = status === 'IF' ? 'IF' : status === 'PS' ? 'PS' : 'OTHER'
     proposalRows.push({
@@ -69,13 +77,14 @@ function parseWorkbook(arrayBuffer) {
       proposalDate: excelDateIntToISO(r['ProposalDate']),
       firstIssuedDate: excelDateIntToISO(r['FirstIssuedDate']),
       caseSub: num(r['Case Sub (IF-PS)']), ipSub: num(r['IP Sub']), ipNet: num(r['IP Net']),
+      policyNum: r['PolicyNum'] ? String(r['PolicyNum']) : '',
     })
   }
 
   // --- Agent (TVV level, chuẩn từ hệ thống) ---
   const agents = {}
   for (const r of (rawAgent || [])) {
-    if (typeof r['YearMonth'] !== 'number' || !r['AGCode']) continue
+    if (!isYearMonth(r['YearMonth']) || !r['AGCode']) continue
     const msdl = String(r['AGCode'])
     agents[msdl] = {
       unit: r['UnitCode'] || '', leaderCode: r['LeaderCode'] ? String(r['LeaderCode']) : '',
@@ -100,7 +109,7 @@ function parseWorkbook(arrayBuffer) {
   // --- Leader (Unit level, chuẩn từ hệ thống, thiếu IP nên cộng dồn thêm từ Agent) ---
   const units = {}
   for (const r of (rawLeader || [])) {
-    if (typeof r['YearMonth'] !== 'number' || !r['UnitCode']) continue
+    if (!isYearMonth(r['YearMonth']) || !r['UnitCode']) continue
     const unitCode = r['UnitCode']
     units[unitCode] = {
       unit: unitCode, leaderName: r['LeaderName'] || '', agSeg: r['AGSegName'] || '',
