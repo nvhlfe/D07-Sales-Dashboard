@@ -420,5 +420,13 @@ export function useAuth() {
     const { auth } = getFirebase()
     await signOut(auth)
   }
-  return { user, isAdmin: !!user && user.email === ADMIN_EMAIL, login, logout }
+  // Quyền nhập/sửa: MỌI tài khoản đã đăng nhập đều được nhập.
+  // Trước đây UI khóa cứng chỉ admin@d07.com mới thấy ô nhập (ManMark,
+  // Upload Excel, TVV Hàng Ngày) trong khi firestore.rules vốn đã cho
+  // mọi user đã đăng nhập đọc/ghi — tài khoản cá nhân của Lan bị chặn oan.
+  // Tài khoản Firebase chỉ do admin tạo trong Console (app không có đăng ký
+  // tự do) nên "đã đăng nhập" = nhân sự được cấp tài khoản. isSuperAdmin
+  // giữ lại cho đúng tài khoản gốc khi cần phân biệt sau này.
+  const isSuperAdmin = !!user && user.email === ADMIN_EMAIL
+  return { user, isAdmin: !!user, isSuperAdmin, canEdit: !!user, login, logout }
 }

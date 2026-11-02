@@ -8,6 +8,9 @@ import {
   CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import * as XLSX from 'xlsx'
+import {
+  parseManmarkWorkbook, guessManmarkColumns, buildManmarkCommits,
+} from '../lib/manmarkImport'
 
 // ─────────────────────────────────────────────────────────────
 // ManMark — Theo dõi cam kết tuần (port từ public/manmark.html)
@@ -352,6 +355,7 @@ export default function ManMarkTab() {
   const [drafts, setDrafts] = useState({})       // giá trị đang gõ trong ô input
   const [saveState, setSaveState] = useState('idle') // idle|saving|saved|error
   const [showAddTvv, setShowAddTvv] = useState(false)
+  const [showUpload, setShowUpload] = useState(false)
   const [showWeekCfg, setShowWeekCfg] = useState(false)
   const [detailCode, setDetailCode] = useState(null)
 
@@ -636,7 +640,7 @@ export default function ManMarkTab() {
           <select
             value={actualSource}
             disabled={!isAdmin}
-            title={isAdmin ? '' : 'Chỉ admin được đổi nguồn'}
+            title={isAdmin ? '' : 'Đăng nhập để đổi nguồn'}
             onChange={(e) => setActualSource(e.target.value)}
             style={btnStyle('#fff', '#1a1f36')}
           >
@@ -661,6 +665,7 @@ export default function ManMarkTab() {
           </button>
           {isAdmin && (
             <>
+              <button onClick={() => setShowUpload(true)} style={btnStyle('#f3e8ff', '#6d28d9')}>📥 Upload DATA</button>
               <button onClick={() => setShowWeekCfg(true)} style={btnStyle('#eef2ff', '#4361ee')}>📅 Cấu hình tuần</button>
               <button onClick={() => setShowAddTvv(true)} style={btnStyle('#e6faf2', '#065f46')}>＋ Thêm TVV</button>
             </>
@@ -672,7 +677,7 @@ export default function ManMarkTab() {
         </div>
         {!isAdmin && (
           <div style={{ fontSize: 11, color: '#8896aa', marginTop: 8 }}>
-            👁 Chế độ xem — chỉ tài khoản admin mới được nhập/sửa cam kết.
+            👁 Chế độ xem — hãy đăng nhập (nút Đăng nhập ở thanh bên) để nhập/sửa cam kết. Mọi tài khoản được cấp đều nhập được.
             {officialLoading ? ' Đang tải số liệu chính thức…' : ''}
           </div>
         )}
@@ -861,7 +866,7 @@ export default function ManMarkTab() {
                 {!rows.length && (
                   <tr>
                     <td colSpan={99} style={{ padding: 20, color: '#8896aa' }}>
-                      Chưa có dữ liệu — hãy upload DATA tháng ở tab Sales Report/TVV Hàng Ngày
+                      Chưa có dữ liệu — {isAdmin ? 'bấm 📥 Upload DATA ở trên để nạp file cam kết tháng này, hoặc ' : ''}upload DATA tháng ở tab Sales Report/TVV Hàng Ngày
                       {actualSource === 'official'
                         ? `, hoặc kiểm tra collection daily_sales_tvv đã có dữ liệu tháng ${month}/${year} chưa.`
                         : `, hoặc kiểm tra reports/${year}-${month} đã có dữ liệu sales report chưa.`}
@@ -906,6 +911,21 @@ export default function ManMarkTab() {
       </div>
 
       {/* ── Modals ── */}
+      {showUpload && (
+        <UploadDataModal
+          existingCommits={mm.commits}
+          weeksSeeded={mm.weeksSeeded}
+          onClose={() => setShowUpload(false)}
+          onApply={({ newCommits, codes, seedWeeks }) => updateMm((next) => {
+            next.commits = newCommits
+            codes.forEach((c) => { if (next.excluded) delete next.excluded[c] })
+            if (seedWeeks && seedWeeks.length) {
+              next.weeks = seedWeeks
+              next.weeksSeeded = true
+            }
+          })}
+        />
+      )}
       {showAddTvv && (
         <AddTvvModal
           weeks={weeks}
@@ -988,6 +1008,142 @@ function AddTvvModal({ weeks, onClose, onSave }) {
             <button onClick={onClose} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e8ecf4', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Hủy</button>
             <button onClick={save} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#06d6a0', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>💾 Lưu</button>
           </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// Modal Upload DATA cam kết tháng bằng Excel (khôi phục từ bản
+// ManMark cũ): chọn file → tự đoán cột → xác nhận cột → lưu.
+// Logic đọc/đoán/dựng dữ liệu nằm ở src/lib/manmarkImport.js.
+// ─────────────────────────────────────────────────────────────
+function UploadDataModal({ existingCommits, weeksSeeded, onClose, onApply }) {
+  const [parsed, setParsed] = useState(null) // { headers, rows, guess }
+  const [replaceAll, setReplaceAll] = useState(false)
+  const [sel, setSel] = useState({})         // unit/code/name/segment/month -> colIdx
+  const [weekSel, setWeekSel] = useState({}) // { [weekNum]: { fyp, hs } }
+  const [err, setErr] = useState('')
+
+  const handleFile = async (file) => {
+    if (!file) return
+    setErr('')
+    try {
+      const buf = await file.arrayBuffer()
+      const { headers, rows } = parseManmarkWorkbook(buf)
+      const guess = guessManmarkColumns(headers)
+      setParsed({ headers, rows, guess })
+      setSel({
+        unit: guess.unitIdx, code: guess.codeIdx, name: guess.nameIdx,
+        segment: guess.segmentIdx, month: guess.monthIdx,
+      })
+      const ws = {}
+      guess.weekNums.forEach((n) => { ws[n] = { fyp: guess.weekFyp[n] ?? -1, hs: guess.weekHs[n] ?? -1 } })
+      setWeekSel(ws)
+    } catch (e) {
+      setErr(e.message || String(e))
+      setParsed(null)
+    }
+  }
+
+  const confirm = () => {
+    if (!parsed) return
+    if (sel.code == null || sel.code === -1) { window.alert('Bắt buộc chọn cột Mã TVV'); return }
+    const weekCols = parsed.guess.weekNums.map((n) => ({
+      n, fypIdx: weekSel[n]?.fyp ?? -1, hsIdx: weekSel[n]?.hs ?? -1,
+    }))
+    const { commits, imported, codes } = buildManmarkCommits({
+      rows: parsed.rows,
+      mapping: {
+        unitIdx: sel.unit, codeIdx: sel.code, nameIdx: sel.name,
+        segmentIdx: sel.segment, monthIdx: sel.month, weekCols,
+      },
+      existingCommits, replaceAll,
+    })
+    if (!imported) { window.alert('Không có dòng nào có Mã TVV — kiểm tra lại cột đã chọn'); return }
+    const derived = parsed.guess.derivedWeeks.filter(Boolean)
+    const seedWeeks = derived.length && !weeksSeeded ? derived : null
+    onApply({ newCommits: commits, codes, seedWeeks })
+    window.alert(`✓ Đã nhập ${imported} TVV cho tháng đang xem${seedWeeks ? ' và lấy khoảng ngày tuần từ file' : ''}. Số liệu sẽ hiện ngay và tự lưu lên hệ thống.`)
+    onClose()
+  }
+
+  const colOptions = (value) => (
+    <>
+      {parsed.headers.map((h, i) => (
+        <option key={i} value={i}>{h || `(cột ${i + 1})`}</option>
+      ))}
+      <option value={-1}>— Không có —</option>
+    </>
+  )
+  const mapRow = (label, value, onChange) => (
+    <tr key={label}>
+      <td style={{ fontWeight: 600, color: '#4a5568', padding: '5px 8px', whiteSpace: 'nowrap' }}>{label}</td>
+      <td style={{ padding: '3px 0' }}>
+        <select className="mm-form-input" value={value ?? -1} onChange={(e) => onChange(+e.target.value)}>
+          {parsed && colOptions(value)}
+        </select>
+      </td>
+    </tr>
+  )
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: parsed ? 720 : 520 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="modal-title">📥 Upload DATA cam kết tháng</div>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          {!parsed ? (
+            <>
+              <div style={{ fontSize: 11.5, color: '#8896aa', lineHeight: 1.6, marginBottom: 10 }}>
+                Chọn file Excel cam kết (giống DATA.xlsx) cho tháng đang xem.
+                Bước tiếp theo bạn sẽ xác nhận cột dữ liệu tương ứng trước khi lưu.
+              </div>
+              <input
+                type="file" accept=".xlsx,.xls" className="mm-form-input"
+                onChange={(e) => { handleFile(e.target.files[0]); e.target.value = '' }}
+              />
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#6b7690', marginTop: 10 }}>
+                <input type="checkbox" checked={replaceAll} onChange={(e) => setReplaceAll(e.target.checked)} style={{ width: 'auto' }} />
+                Thay thế toàn bộ danh sách cam kết tháng này (xoá cam kết cũ không có trong file)
+              </label>
+              {err && (
+                <div style={{ color: '#c0243c', fontSize: 12, marginTop: 10, padding: '8px 12px', background: '#fff0f0', borderRadius: 8 }}>
+                  ⚠ {err}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 11.5, color: '#8896aa', lineHeight: 1.6, marginBottom: 8 }}>
+                Phát hiện <b>{parsed.rows.length} dòng dữ liệu</b>, {parsed.guess.weekNums.length} tuần cam kết trong file.
+                Kiểm tra lại các cột bên dưới trước khi lưu.
+                {replaceAll && <div style={{ color: '#c0243c', fontWeight: 600, marginTop: 4 }}>Đang bật: thay thế toàn bộ cam kết tháng này bằng file này.</div>}
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <tbody>
+                  {mapRow('Unit / Nhóm', sel.unit, (v) => setSel((s) => ({ ...s, unit: v })))}
+                  {mapRow('Mã TVV (MSDL)', sel.code, (v) => setSel((s) => ({ ...s, code: v })))}
+                  {mapRow('Tên TVV', sel.name, (v) => setSel((s) => ({ ...s, name: v })))}
+                  {mapRow('AG Segment', sel.segment, (v) => setSel((s) => ({ ...s, segment: v })))}
+                  {mapRow('Cam kết tháng', sel.month, (v) => setSel((s) => ({ ...s, month: v })))}
+                  {parsed.guess.weekNums.map((n) => (
+                    <React.Fragment key={n}>
+                      {mapRow(`Cam kết FYP – Tuần ${n}`, weekSel[n]?.fyp, (v) => setWeekSel((s) => ({ ...s, [n]: { ...s[n], fyp: v } })))}
+                      {mapRow(`Cam kết HS – Tuần ${n}`, weekSel[n]?.hs, (v) => setWeekSel((s) => ({ ...s, [n]: { ...s[n], hs: v } })))}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 14 }}>
+                <button onClick={() => setParsed(null)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e8ecf4', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>← Chọn file khác</button>
+                <button onClick={confirm} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#06d6a0', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>✔ Xác nhận &amp; Lưu</button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

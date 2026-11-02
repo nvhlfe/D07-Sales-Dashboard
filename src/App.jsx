@@ -210,7 +210,7 @@ function LoginModal({ onClose, onLogin }) {
       <div className="modal-box" style={{ maxWidth: 360 }}>
         <div className="modal-header">
           <div>
-            <div className="modal-title" style={{ marginBottom: 2 }}>🔐 Đăng nhập Admin</div>
+            <div className="modal-title" style={{ marginBottom: 2 }}>🔐 Đăng nhập</div>
             <div style={{ fontSize: 12, color: '#8896aa' }}>Cần đăng nhập để cập nhật dữ liệu Excel</div>
           </div>
           <button className="modal-close" onClick={onClose}>✕</button>
@@ -359,7 +359,7 @@ export default function App() {
   const handleFile = async (file) => {
     if (!file) return
     if (!isAdmin) {
-      setToast({ message: '🔒 Cần đăng nhập admin để cập nhật dữ liệu', type: 'error' })
+      setToast({ message: '🔒 Cần đăng nhập để cập nhật dữ liệu', type: 'error' })
       setShowLogin(true)
       return
     }
@@ -460,7 +460,7 @@ export default function App() {
           ) : (
             <div className="nav-item" onClick={() => setShowLogin(true)}>
               <span style={{ fontSize:15 }}>🔐</span>
-              <span>Đăng nhập Admin</span>
+              <span>Đăng nhập</span>
             </div>
           )}
 
@@ -535,7 +535,7 @@ export default function App() {
               className="upload-btn"
               onClick={triggerUpload}
               style={!isAdmin ? { background:'#f0f4ff', color:'#4361ee', boxShadow:'none' } : {}}
-              title={isAdmin ? 'Cập nhật Excel' : 'Cần đăng nhập admin'}
+              title={isAdmin ? 'Cập nhật Excel' : 'Cần đăng nhập'}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 {isAdmin
