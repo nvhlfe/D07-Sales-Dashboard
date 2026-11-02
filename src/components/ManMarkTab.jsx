@@ -9,7 +9,8 @@ import {
 } from 'recharts'
 import * as XLSX from 'xlsx'
 import {
-  parseManmarkWorkbook, guessManmarkColumns, buildManmarkCommits,
+  parseManmarkUpload, guessManmarkColumns, buildManmarkCommits,
+  detectPlanFormat, detectPlanMonth, parseAmount,
 } from '../lib/manmarkImport'
 
 // ─────────────────────────────────────────────────────────────
@@ -915,6 +916,8 @@ export default function ManMarkTab() {
         <UploadDataModal
           existingCommits={mm.commits}
           weeksSeeded={mm.weeksSeeded}
+          selMonth={month}
+          selYear={year}
           onClose={() => setShowUpload(false)}
           onApply={({ newCommits, codes, seedWeeks }) => updateMm((next) => {
             next.commits = newCommits
@@ -1019,21 +1022,25 @@ function AddTvvModal({ weeks, onClose, onSave }) {
 // ManMark cũ): chọn file → tự đoán cột → xác nhận cột → lưu.
 // Logic đọc/đoán/dựng dữ liệu nằm ở src/lib/manmarkImport.js.
 // ─────────────────────────────────────────────────────────────
-function UploadDataModal({ existingCommits, weeksSeeded, onClose, onApply }) {
-  const [parsed, setParsed] = useState(null) // { headers, rows, guess }
+function UploadDataModal({ existingCommits, weeksSeeded, selMonth, selYear, onClose, onApply }) {
+  const [parsed, setParsed] = useState(null) // { headers, rows, preamble, guess, plan, planMonth }
+  const [manualMode, setManualMode] = useState(false)
   const [replaceAll, setReplaceAll] = useState(false)
   const [sel, setSel] = useState({})         // unit/code/name/segment/month -> colIdx
   const [weekSel, setWeekSel] = useState({}) // { [weekNum]: { fyp, hs } }
   const [err, setErr] = useState('')
+  const [errCode, setErrCode] = useState('')
 
   const handleFile = async (file) => {
     if (!file) return
-    setErr('')
+    setErr(''); setErrCode(''); setManualMode(false)
     try {
       const buf = await file.arrayBuffer()
-      const { headers, rows } = parseManmarkWorkbook(buf)
+      const { headers, rows, preamble } = parseManmarkUpload(buf, file.name)
       const guess = guessManmarkColumns(headers)
-      setParsed({ headers, rows, guess })
+      const plan = detectPlanFormat(headers)
+      const planMonth = detectPlanMonth(preamble)
+      setParsed({ headers, rows, preamble, guess, plan, planMonth })
       setSel({
         unit: guess.unitIdx, code: guess.codeIdx, name: guess.nameIdx,
         segment: guess.segmentIdx, month: guess.monthIdx,
@@ -1043,6 +1050,7 @@ function UploadDataModal({ existingCommits, weeksSeeded, onClose, onApply }) {
       setWeekSel(ws)
     } catch (e) {
       setErr(e.message || String(e))
+      setErrCode(e.code || '')
       setParsed(null)
     }
   }
@@ -1068,6 +1076,35 @@ function UploadDataModal({ existingCommits, weeksSeeded, onClose, onApply }) {
     window.alert(`✓ Đã nhập ${imported} TVV cho tháng đang xem${seedWeeks ? ' và lấy khoảng ngày tuần từ file' : ''}. Số liệu sẽ hiện ngay và tự lưu lên hệ thống.`)
     onClose()
   }
+
+  // Nạp thẳng khi file đúng định dạng Plan tháng (MANMARK_-_T11):
+  // cột đã map cứng, tiền triệu → nghìn đồng, tuần lấy từ tiêu đề cột.
+  const confirmPlan = () => {
+    const plan = parsed.plan
+    const pm = parsed.planMonth
+    if (pm && (pm.month !== selMonth || pm.year !== selYear)) {
+      if (!window.confirm(`File này là Plan tháng ${pm.month}/${pm.year} nhưng bạn đang xem tháng ${selMonth}/${selYear}.\nVẫn nhập vào tháng ${selMonth}/${selYear}?`)) return
+    }
+    const { commits, imported, codes } = buildManmarkCommits({
+      rows: parsed.rows, mapping: plan, existingCommits, replaceAll,
+    })
+    if (!imported) { window.alert('Không có dòng nào có Mã TVV trong file'); return }
+    const totalRaw = parsed.rows.reduce((s, r) => s + parseAmount(r[plan.monthIdx]), 0)
+    onApply({ newCommits: commits, codes, seedWeeks: plan.weeks })
+    window.alert(`✓ Đã nhập ${imported} TVV — tổng cam kết ${Math.round(totalRaw).toLocaleString('vi-VN')} triệu đồng, tuần theo đúng file Plan. Số liệu sẽ hiện ngay và tự lưu lên hệ thống.`)
+    onClose()
+  }
+
+  const planStats = parsed?.plan ? (() => {
+    const plan = parsed.plan
+    const dataRows = parsed.rows.filter((r) => r[plan.codeIdx] != null && String(r[plan.codeIdx]).trim() !== '')
+    const sum = (idx) => dataRows.reduce((s, r) => s + parseAmount(r[idx]), 0)
+    return {
+      count: dataRows.length,
+      totalMonth: sum(plan.monthIdx),
+      weeks: plan.weekCols.map((w) => ({ ...w, label: plan.weeks.find((x) => x.label === `Tuần ${w.n}`), fyp: sum(w.fypIdx), hs: w.hsIdx >= 0 ? sum(w.hsIdx) : 0 })),
+    }
+  })() : null
 
   const colOptions = (value) => (
     <>
@@ -1099,11 +1136,11 @@ function UploadDataModal({ existingCommits, weeksSeeded, onClose, onApply }) {
           {!parsed ? (
             <>
               <div style={{ fontSize: 11.5, color: '#8896aa', lineHeight: 1.6, marginBottom: 10 }}>
-                Chọn file Excel cam kết (giống DATA.xlsx) cho tháng đang xem.
-                Bước tiếp theo bạn sẽ xác nhận cột dữ liệu tương ứng trước khi lưu.
+                Chọn file Excel cam kết (.xlsx, .xls) hoặc file CSV cho tháng đang xem.
+                File đúng định dạng <b>Plan tháng</b> (dạng MANMARK_-_T11) sẽ được nhận diện và nạp thẳng, không cần xác nhận cột.
               </div>
               <input
-                type="file" accept=".xlsx,.xls" className="mm-form-input"
+                type="file" accept=".xlsx,.xls,.csv" className="mm-form-input"
                 onChange={(e) => { handleFile(e.target.files[0]); e.target.value = '' }}
               />
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#6b7690', marginTop: 10 }}>
@@ -1111,10 +1148,44 @@ function UploadDataModal({ existingCommits, weeksSeeded, onClose, onApply }) {
                 Thay thế toàn bộ danh sách cam kết tháng này (xoá cam kết cũ không có trong file)
               </label>
               {err && (
-                <div style={{ color: '#c0243c', fontSize: 12, marginTop: 10, padding: '8px 12px', background: '#fff0f0', borderRadius: 8 }}>
+                <div style={{ color: '#c0243c', fontSize: 12, marginTop: 10, padding: '8px 12px', background: '#fff0f0', borderRadius: 8, lineHeight: 1.6 }}>
                   ⚠ {err}
+                  {(errCode === 'RMS_PROTECTED' || errCode === 'ENCRYPTED') && (
+                    <div style={{ marginTop: 6 }}>
+                      Cách tạo bản sao đọc được: mở file trong Excel → <b>File → Save As</b> → chọn
+                      <b> CSV UTF-8 (Comma delimited)</b> → lưu → upload file .csv vừa lưu tại đây.
+                    </div>
+                  )}
                 </div>
               )}
+            </>
+          ) : (parsed.plan && !manualMode && planStats) ? (
+            <>
+              <div style={{ background: '#e6faf2', border: '1px solid #6ee7b7', borderRadius: 10, padding: '10px 14px', fontSize: 12.5, color: '#065f46', lineHeight: 1.7 }}>
+                ✓ Đúng định dạng <b>Plan tháng{parsed.planMonth ? ` ${parsed.planMonth.month}/${parsed.planMonth.year}` : ''}</b> của GA D07 — cột đã tự khớp, không cần chỉnh tay.
+                <div style={{ marginTop: 4 }}>
+                  <b>{planStats.count} TVV</b> · Tổng cam kết tháng: <b>{Math.round(planStats.totalMonth).toLocaleString('vi-VN')} triệu đồng</b>
+                </div>
+                {planStats.weeks.map((w) => (
+                  <div key={w.n}>
+                    Tuần {w.n} (ngày {w.label?.start}–{w.label?.end}): {Math.round(w.fyp).toLocaleString('vi-VN')} triệu · {Math.round(w.hs)} hồ sơ
+                  </div>
+                ))}
+                <div style={{ fontSize: 11, marginTop: 4 }}>
+                  Tiền trong file tính bằng <b>triệu đồng</b> — hệ thống tự quy đổi sang nghìn đồng của ManMark. Khoảng ngày tuần cũng lấy theo đúng file Plan.
+                </div>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#6b7690', marginTop: 10 }}>
+                <input type="checkbox" checked={replaceAll} onChange={(e) => setReplaceAll(e.target.checked)} style={{ width: 'auto' }} />
+                Thay thế toàn bộ danh sách cam kết tháng này (xoá cam kết cũ không có trong file)
+              </label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+                <button onClick={() => setParsed(null)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e8ecf4', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>← Chọn file khác</button>
+                <span style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => setManualMode(true)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #e8ecf4', background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Xác nhận cột thủ công</button>
+                  <button onClick={confirmPlan} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: '#06d6a0', color: '#fff', cursor: 'pointer', fontWeight: 700 }}>✔ Nạp ngay</button>
+                </span>
+              </div>
             </>
           ) : (
             <>
