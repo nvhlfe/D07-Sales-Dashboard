@@ -686,6 +686,22 @@ function extractData(wb) {
   return result
 }
 
+// ── MOC (duy trì chức danh UM) — phần lượt Active ─────────────────
+// File Compensation (sheet UM-OFF) có sẵn cả khối MOC: tổng lượt đã tính
+// (moc_tongLuot = lượt TVV có HĐ + 2 × lượt TVV mới CL) và số lượt còn
+// thiếu do chính file tính (moc_luotCanThem). Ưu tiên số của file; chỉ khi
+// file thiếu mới tự suy ra theo ngưỡng ≥6 lượt ghi trong UMModal.
+// Khác với luotActCanThem (cột 28) — đó là lượt Act cần cho THƯỞNG QUÝ NHÓM.
+export function mocActInfo(um) {
+  if (!um) return { passed: false, have: null, need: null, enough: false }
+  const s = String(um.moc_tamDat ?? '')
+  const passed = s.includes('ü') || s.toLowerCase() === 'true'
+  const have = um.moc_tongLuot != null && !isNaN(Number(um.moc_tongLuot)) ? Number(um.moc_tongLuot) : null
+  let need = um.moc_luotCanThem != null && !isNaN(Number(um.moc_luotCanThem)) ? Number(um.moc_luotCanThem) : null
+  if (need === null && have !== null) need = Math.max(0, 6 - have)
+  return { passed, have, need, enough: passed || (need !== null && need <= 0) }
+}
+
 export function formatNum(val) {
   if (val === null || val === undefined) return '-'
   const n = parseFloat(val)

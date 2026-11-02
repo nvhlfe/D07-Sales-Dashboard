@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { formatNum } from '../utils/parseExcel'
+import { formatNum, mocActInfo } from '../utils/parseExcel'
 import UMModal from './UMModal'
 
 function PCBadge({ val }) {
@@ -49,6 +49,8 @@ const UM_SORTERS = {
   tongTvvAct: um => parseFloat(um.tongTvvAct) || 0,
   mucHoTro:   um => parseFloat(um.mucHoTro) || 0,
   moc_tamDat: um => mocRank(um.moc_tamDat),
+  moc_tongLuot: um => mocActInfo(um).have ?? -1,
+  moc_luotCanThem: um => mocActInfo(um).need ?? -1,
 }
 
 function SortableTh({ field, label, sortField, sortDir, onSort }) {
@@ -99,48 +101,49 @@ export default function UMTab({ data }) {
 
   return (
     <div className="page-content">
-      <div style={{ marginBottom: 16 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1a1f36', marginBottom: 4 }}>Danh Sách UM — Văn Phòng D07</h2>
-        <p style={{ fontSize: 12, color: '#8896aa' }}>Click vào dòng để xem chi tiết đầy đủ · {umList.length} UM</p>
+      <div className="page-head">
+        <div className="page-title">Danh Sách UM — Văn Phòng D07</div>
+        <div className="page-sub">Click vào dòng để xem chi tiết đầy đủ · {umList.length} UM</div>
       </div>
 
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 11, color: '#8896aa', fontWeight: 600, marginBottom: 4 }}>TỔNG UM</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: '#4361ee' }}>{umList.length}</div>
+        <div className="card summary-card">
+          <div className="summary-label">TỔNG UM</div>
+          <div className="summary-value" style={{ color: '#4361ee' }}>{umList.length}</div>
         </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 11, color: '#8896aa', fontWeight: 600, marginBottom: 4 }}>TỔNG FYC PHÒNG TT</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#f72585' }}>{formatNum(totalFyc)}</div>
-          <div style={{ fontSize: 10, color: '#8896aa' }}>triệu VND</div>
+        <div className="card summary-card">
+          <div className="summary-label">TỔNG FYC PHÒNG TT</div>
+          <div className="summary-value sm" style={{ color: '#f72585' }}>{formatNum(totalFyc)}</div>
+          <div className="summary-sub">triệu VND</div>
         </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 11, color: '#8896aa', fontWeight: 600, marginBottom: 4 }}>TIỀN THƯỞNG TẠM ĐẠT</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#06d6a0' }}>{formatNum(totalThuong)}</div>
-          <div style={{ fontSize: 10, color: '#8896aa' }}>triệu VND</div>
+        <div className="card summary-card">
+          <div className="summary-label">TIỀN THƯỞNG TẠM ĐẠT</div>
+          <div className="summary-value sm" style={{ color: '#06d6a0' }}>{formatNum(totalThuong)}</div>
+          <div className="summary-sub">triệu VND</div>
         </div>
-        <div className="card" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 11, color: '#8896aa', fontWeight: 600, marginBottom: 4 }}>ĐẠT DUY TRÌ (MOC)</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: '#7209b7' }}>
+        <div className="card summary-card">
+          <div className="summary-label">ĐẠT DUY TRÌ (MOC)</div>
+          <div className="summary-value" style={{ color: '#7209b7' }}>
             {umList.filter(u => u.moc_tamDat && String(u.moc_tamDat).includes('ü')).length}
           </div>
-          <div style={{ fontSize: 10, color: '#8896aa' }}>/ {umList.length} UM</div>
+          <div className="summary-sub">/ {umList.length} UM</div>
+          {(() => {
+            const thieu = umList.filter(u => { const i = mocActInfo(u); return i.need !== null && i.need > 0 }).length
+            return thieu > 0
+              ? <div style={{ fontSize: 10, color: '#ef476f', fontWeight: 600, marginTop: 2 }}>{thieu} UM còn thiếu lượt Act</div>
+              : null
+          })()}
         </div>
       </div>
 
       <div className="card">
         <div style={{ marginBottom: 12 }}>
           <input
+            className="search-input"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="🔍 Tìm theo tên hoặc mã đại lý..."
-            style={{
-              width: '100%', padding: '9px 14px', border: '1.5px solid #e8ecf4',
-              borderRadius: 9, fontSize: 13, outline: 'none', fontFamily: 'Inter, sans-serif',
-            }}
-            onFocus={e => e.target.style.borderColor = '#4361ee'}
-            onBlur={e => e.target.style.borderColor = '#e8ecf4'}
           />
         </div>
 
@@ -157,9 +160,11 @@ export default function UMTab({ data }) {
                 <th>TLDTPTT</th>
                  <SortableTh field="pcTamDat" label="PC Tạm đạt" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                  <SortableTh field="tongTvvAct" label="Tổng TVV HĐ" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
-                 <th>Lượt ACT cần</th>
+                 <th>Lượt ACT cần (Thưởng quý)</th>
                  <th>TVV CL cần thêm</th>
                 <SortableTh field="mucHoTro" label="Mức hỗ trợ" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                <SortableTh field="moc_tongLuot" label="Lượt Act MOC (đã có)" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
+                <SortableTh field="moc_luotCanThem" label="Act cần thêm (MOC)" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
                 <SortableTh field="moc_tamDat" label="Duy trì (MOC)" sortField={sortField} sortDir={sortDir} onSort={handleSort} />
               </tr>
             </thead>
@@ -178,11 +183,35 @@ export default function UMTab({ data }) {
                   <td style={{ color:'#ef476f', fontWeight:700 }}>{formatNum(um.luotActCanThem)}</td>
                   <td style={{ color:'#7c3aed', fontWeight:700 }}>{formatNum(um.tvvMoiCl)}</td>
                   <td style={{ color:'#fb8500', fontWeight:700 }}>{um.mucHoTro != null && !isNaN(Number(um.mucHoTro)) ? Number(um.mucHoTro).toFixed(1)+'%' : '—'}</td>
+                  {(() => {
+                    const info = mocActInfo(um)
+                    return (
+                      <>
+                        <td style={{ color: '#7209b7', fontWeight: 700 }}>
+                          {info.have !== null ? formatNum(info.have) : '—'}
+                          {um.moc_luotTvvAct != null && um.moc_tvvMoiCl != null && (
+                            <div style={{ fontSize: 9.5, color: '#8896aa', fontWeight: 500 }}>
+                              {formatNum(um.moc_luotTvvAct)} HĐ + {formatNum(um.moc_tvvMoiCl)} mới CL×2
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          {info.need === null
+                            ? (info.passed
+                              ? <span style={{ color: '#06d6a0', fontWeight: 700 }}>✓ Đủ</span>
+                              : <span style={{ color: '#8896aa' }}>—</span>)
+                            : info.need <= 0
+                              ? <span style={{ color: '#06d6a0', fontWeight: 700 }}>✓ Đủ</span>
+                              : <span style={{ color: '#ef476f', fontWeight: 800, fontSize: 14 }}>{formatNum(info.need)}</span>}
+                        </td>
+                      </>
+                    )
+                  })()}
                   <td><MocBadge val={um.moc_tamDat} /></td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={11} style={{ textAlign: 'center', padding: 24, color: '#8896aa' }}>Không tìm thấy</td></tr>
+                <tr><td colSpan={15} style={{ textAlign: 'center', padding: 24, color: '#8896aa' }}>Không tìm thấy</td></tr>
               )}
             </tbody>
           </table>

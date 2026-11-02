@@ -101,9 +101,9 @@ export default function TVVTab({ data }) {
 
   return (
     <div className="page-content">
-      <div style={{ marginBottom: 16 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1a1f36', marginBottom: 4 }}>Danh Sách TVV (AG-PE)</h2>
-        <p style={{ fontSize: 12, color: '#8896aa' }}>Click vào dòng để xem chi tiết · {agList.length} TVV</p>
+      <div className="page-head">
+        <div className="page-title">Danh Sách TVV (AG-PE)</div>
+        <div className="page-sub">Click vào dòng để xem chi tiết · {agList.length} TVV</div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>

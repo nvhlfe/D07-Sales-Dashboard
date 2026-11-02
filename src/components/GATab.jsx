@@ -135,8 +135,8 @@ export default function GATab({ data }) {
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14, flexWrap:'wrap', gap:8 }}>
         <div>
-          <h2 style={{ fontSize:15, fontWeight:700, color:'#1a1f36', marginBottom:2 }}>GA Tổng Hợp — D07 Quận 7</h2>
-          <p style={{ fontSize:11, color:'#8896aa' }}>Dữ liệu Planning vs Achieved 2026</p>
+          <div className="page-title" style={{ fontSize: 15 }}>GA Tổng Hợp — D07 Quận 7</div>
+          <div className="page-sub" style={{ fontSize: 11 }}>Dữ liệu Planning vs Achieved 2026</div>
         </div>
         <div style={{ display:'flex', gap:6 }}>
           {['table','charts','yoy'].map(v => (

@@ -297,7 +297,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => localStorage.getItem('d07_sidebar') !== '0')
   const [isMobile,    setIsMobile]    = useState(window.innerWidth <= 768)
   const [showLogin,   setShowLogin]   = useState(false)
-  const [salesVisited, setSalesVisited] = useState(false) // giữ iframe sales không reload khi chuyển tab
+  const [salesVisited, setSalesVisited] = useState(false) // giữ Sales Report mounted để không mất dữ liệu đang nhập khi chuyển tab
   const fileInputRef = useRef()
 
   // ── Data layer dùng chung (src/lib/db.js) ──
@@ -564,7 +564,7 @@ export default function App() {
           </ErrorBoundary>
         )}
 
-        {/* Tab Sales Report giữ cấu trúc iframe cũ — giữ nguyên trạng thái khi chuyển qua lại */}
+        {/* Sales Report (React native, All-in-One) — mở 1 lần rồi giữ mounted, ẩn/hiện theo tab */}
         {salesVisited && (
           <div style={{ display: activeTab === 'sales' ? 'block' : 'none' }}>
             <SalesReportTab />

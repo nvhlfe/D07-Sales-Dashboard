@@ -18,7 +18,9 @@ import { initializeApp, getApps } from 'firebase/app'
 import { getDatabase, ref, onValue, set, get } from 'firebase/database'
 import {
   getFirestore, doc, collection, addDoc,
-  onSnapshot, setDoc, getDoc,
+  onSnapshot, setDoc, getDoc, getDocs, deleteField,
+  query, where, orderBy, limit, documentId, startAt, endAt,
+  serverTimestamp,
 } from 'firebase/firestore'
 import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
@@ -377,6 +379,124 @@ export async function saveManMark(year, month, payload, updatedBy) {
     ...payload, updatedAt, updatedBy: updatedBy || null,
   })
   return updatedAt
+}
+
+/**
+ * Lưu TỪNG NGƯỜI vào reports/{yyyy-m} bằng merge dot-notation `data.<_id>`
+ * — đúng cơ chế của Sales Report gốc: nhiều người sửa đồng thời không đè
+ * lẫn nhau, không phải ghi lại cả document. person bắt buộc có _id.
+ */
+export async function saveReportPerson(year, month, person, updatedBy) {
+  const { fs } = getFirebase()
+  await setDoc(doc(fs, 'reports', yyyyMKey(year, month)), {
+    data: { [person._id]: person },
+    updatedAt: new Date().toISOString(), updatedBy: updatedBy || null,
+  }, { merge: true })
+}
+
+/** Ghi nhiều người cùng lúc (import/đối soát) — vẫn merge theo từng _id. */
+export async function saveReportPersons(year, month, persons, updatedBy) {
+  if (!persons?.length) return
+  const { fs } = getFirebase()
+  const data = {}
+  persons.forEach((p) => { if (p?._id) data[p._id] = p })
+  await setDoc(doc(fs, 'reports', yyyyMKey(year, month)), {
+    data, updatedAt: new Date().toISOString(), updatedBy: updatedBy || null,
+  }, { merge: true })
+}
+
+/** Xoá 1 người khỏi reports/{yyyy-m} (deleteField theo _id, giữ người khác). */
+export async function deleteReportPerson(year, month, personId, updatedBy) {
+  const { fs } = getFirebase()
+  await setDoc(doc(fs, 'reports', yyyyMKey(year, month)), {
+    data: { [personId]: deleteField() },
+    updatedAt: new Date().toISOString(), updatedBy: updatedBy || null,
+  }, { merge: true })
+}
+
+/** Danh sách TVV dùng chung `tvv_directory/main` ({ items: [{unit, msdl, name}] }). */
+export function useTvvDirectory() {
+  const [state, setState] = useState({ items: [], loading: true })
+  useEffect(() => {
+    let unsub = null
+    try {
+      const { fs } = getFirebase()
+      unsub = onSnapshot(
+        doc(fs, 'tvv_directory', 'main'),
+        (snap) => setState({ items: snap.exists() ? (snap.data().items || []) : [], loading: false }),
+        () => setState((s) => ({ ...s, loading: false }))
+      )
+    } catch (e) {
+      console.error('[db] useTvvDirectory:', e)
+      setState((s) => ({ ...s, loading: false }))
+    }
+    return () => { if (unsub) unsub() }
+  }, [])
+  return state
+}
+
+export async function saveTvvDirectory(items, updatedBy) {
+  const { fs } = getFirebase()
+  await setDoc(doc(fs, 'tvv_directory', 'main'), {
+    items, updatedAt: new Date().toISOString(), updatedBy: updatedBy || null,
+  })
+}
+
+/** Toàn bộ snapshot daily_sales_tvv trong 1 tháng → [{ id: 'yyyy-mm-dd', data }]. */
+export async function listDailySalesInMonth(year, month) {
+  const { fs } = getFirebase()
+  const p = (n) => String(n).padStart(2, '0')
+  const q = query(
+    collection(fs, 'daily_sales_tvv'),
+    orderBy(documentId()),
+    startAt(`${year}-${p(month)}-01`),
+    endAt(`${year}-${p(month)}-31`)
+  )
+  const snaps = await getDocs(q)
+  const out = []
+  snaps.forEach((s) => out.push({ id: s.id, data: s.data() }))
+  return out
+}
+
+/** Ghi audit log đúng shape của Sales Report gốc (at = serverTimestamp). */
+export async function logAuditEntry({ month, action, detail, user }) {
+  const { fs } = getFirebase()
+  await addDoc(collection(fs, 'audit_log'), {
+    month: month || null, action: action || '', detail: detail || '',
+    user: user || null, at: serverTimestamp(),
+  })
+}
+
+/** Đọc audit log của 1 tháng (mới nhất trước) cho màn hình Lịch sử thao tác. */
+export function useAuditLog(monthKey) {
+  const [state, setState] = useState({ entries: [], loading: true })
+  useEffect(() => {
+    if (!monthKey) { setState({ entries: [], loading: false }); return }
+    let unsub = null
+    try {
+      const { fs } = getFirebase()
+      const q = query(
+        collection(fs, 'audit_log'),
+        where('month', '==', monthKey),
+        orderBy('at', 'desc'),
+        limit(300)
+      )
+      unsub = onSnapshot(
+        q,
+        (snap) => {
+          const entries = []
+          snap.forEach((d) => entries.push({ id: d.id, ...d.data() }))
+          setState({ entries, loading: false })
+        },
+        (err) => { console.error('[db] useAuditLog:', err); setState((s) => ({ ...s, loading: false })) }
+      )
+    } catch (e) {
+      console.error('[db] useAuditLog:', e)
+      setState((s) => ({ ...s, loading: false }))
+    }
+    return () => { if (unsub) unsub() }
+  }, [monthKey])
+  return state
 }
 
 /** Ghi audit log (dùng chung cho các thao tác ghi tay). */
