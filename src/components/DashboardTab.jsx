@@ -107,12 +107,23 @@ export default function DashboardTab({ data, onNavigate }) {
     return map
   }, [data])
 
+  // Mã Unit theo mã đại lý: tra từ danh sách AG-PE (có sẵn trong data đã lưu,
+  // nên dữ liệu cũ chưa parse lại vẫn hiện được Unit)
+  const unitByCode = useMemo(() => {
+    const map = {}
+    ;(data?.agList || []).forEach(a => { if (a.msddl && a.unit) map[String(a.msddl)] = a.unit })
+    return map
+  }, [data])
+
   const top = useDaily
     ? Object.values(daily.agents || []).slice(0, 60).map(a => ({
         code: a.code, name: a.name, level: a.level || levelByCode[a.code] || '—',
+        unit: a.unit || unitByCode[String(a.code)] || '—',
         fyp: a.fyp, fyc: a.fyc, ipNet: a.ipNet,
       }))
-    : (k.topAgents || data?.topAgents || [])
+    : (k.topAgents || data?.topAgents || []).map(a => ({
+        ...a, unit: a.unit || unitByCode[String(a.code)] || '—',
+      }))
   const offData = k.officeData || data?.officeData || []
 
   const kpis = [
@@ -211,6 +222,7 @@ export default function DashboardTab({ data, onNavigate }) {
               <th>#</th>
               <th>Tên đại lý</th>
               <th>Mã</th>
+              <th>Unit</th>
               <th>Cấp</th>
               <th>FYP</th>
               <th>FYC</th>
@@ -220,7 +232,7 @@ export default function DashboardTab({ data, onNavigate }) {
           </thead>
           <tbody>
             {top.length === 0 && (
-              <tr><td colSpan={8} style={{ textAlign:'center', color:'#8896aa', padding:18 }}>Chưa có số liệu cho tháng này</td></tr>
+              <tr><td colSpan={9} style={{ textAlign:'center', color:'#8896aa', padding:18 }}>Chưa có số liệu cho tháng này</td></tr>
             )}
             {top.map((ag, i) => {
               // FYC cần thêm = 5 - FYC tháng. Nếu FYC ≥ 5, không thiếu nữa → hiện "-"
@@ -232,6 +244,7 @@ export default function DashboardTab({ data, onNavigate }) {
                   </td>
                   <td style={{ color:'#4361ee', fontWeight:600, fontSize:11.5 }}>{ag.name}</td>
                   <td style={{ color:'#8896aa', fontSize:11 }}>{ag.code}</td>
+                  <td><span style={{ background:'#eef2ff', color:'#4361ee', padding:'2px 8px', borderRadius:20, fontSize:10.5, fontWeight:700 }}>{ag.unit || '—'}</span></td>
                   <td><span className={`level-badge level-${ag.level}`}>{ag.level}</span></td>
                   <td className="val-fyp">{formatNum(ag.fyp)}</td>
                   <td className="val-fyc">{formatNum2(ag.fyc)}</td>

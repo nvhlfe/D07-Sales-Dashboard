@@ -126,7 +126,7 @@ function extractData(wb) {
       const code = String(r[C.AGCODE] || '').trim()
       if (!code) return
       if (!agentMap[code]) agentMap[code] = {
-        code, name: r[C.AGNAME], level: r[C.AGLEVEL], branch: r[C.BRANCH],
+        code, name: r[C.AGNAME], level: r[C.AGLEVEL], branch: r[C.BRANCH], unit: r[C.UNIT] || '',
         fyc: 0, fyp: 0, ape: 0, ipNet: 0, caseNet: 0, syc: 0
       }
       agentMap[code].fyc    += parseFloat(r[C.FYC])    || 0
@@ -170,7 +170,7 @@ function extractData(wb) {
       const code = String(r[C.AGCODE] || '').trim()
       if (!code) return
       if (!agMap[code]) agMap[code] = {
-        code, name: r[C.AGNAME], level: r[C.AGLEVEL], branch: r[C.BRANCH],
+        code, name: r[C.AGNAME], level: r[C.AGLEVEL], branch: r[C.BRANCH], unit: r[C.UNIT] || '',
         fyc: 0, fyp: 0, ape: 0, ipNet: 0, caseNet: 0, syc: 0
       }
       agMap[code].fyc    += parseFloat(r[C.FYC])     || 0
