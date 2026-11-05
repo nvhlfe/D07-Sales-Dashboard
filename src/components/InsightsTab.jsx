@@ -14,6 +14,7 @@ const DATA_YEAR = 2026
 const VN_MONTHS = { 1:'T1',2:'T2',3:'T3',4:'T4',5:'T5',6:'T6',7:'T7',8:'T8',9:'T9',10:'T10',11:'T11',12:'T12' }
 const tr = (vnd) => formatNum((Number(vnd) || 0) / 1e6) // VND → triệu
 const fmtDM = (iso) => { const p = String(iso || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}` : iso }
+const fmtDMY = (iso) => { const p = String(iso || '').split('-'); return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : iso }
 
 const VERDICT_UI = {
   ahead:      { label: '🚀 Nhanh hơn nhịp tháng', bg: '#e6faf2', color: '#065f46' },
@@ -509,7 +510,7 @@ export default function InsightsTab({ data, onNavigate }) {
               </span>
               {race.daysLeftNov !== null && (
                 <span style={{ background: '#f1f3f9', color: '#5b6478', padding: '4px 10px', borderRadius: 12, fontSize: 11.5, fontWeight: 700 }}>
-                  T11 còn {race.daysLeftNov} ngày (từ snapshot {race.novLatestDate ? fmtDate(race.novLatestDate) : '—'})
+                  T11 còn {race.daysLeftNov} ngày (từ snapshot {race.novLatestDate ? fmtDMY(race.novLatestDate) : '—'})
                 </span>
               )}
               {!race.hasOct && (
