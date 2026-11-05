@@ -4,6 +4,7 @@ import {
   initFirebase, useDashboardDoc, useAuth, publishDashboardData,
 } from './lib/db'
 import DashboardTab from './components/DashboardTab'
+import InsightsTab from './components/InsightsTab'
 import GATab from './components/GATab'
 import UMTab from './components/UMTab'
 import TVVTab from './components/TVVTab'
@@ -17,6 +18,7 @@ import TvvDailyTab from './components/TvvDailyTab'
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Tổng quan', icon: '📊' },
+  { id: 'insights',  label: 'Điều hành', icon: '🎯' },
   { id: 'ga',        label: 'GA',        icon: '🏢' },
   { id: 'um',        label: 'UM',        icon: '👤' },
   { id: 'tvv',       label: 'TVV',       icon: '🧑‍💼' },
@@ -26,6 +28,7 @@ const NAV_ITEMS = [
 ]
 const TAB_TITLES = {
   dashboard: 'Dashboard Tổng Quan — GA D07 Quận 7',
+  insights: 'Trung Tâm Điều Hành — GA D07',
   ga: 'GA Tổng Hợp', um: 'Danh Sách UM', tvv: 'Danh Sách TVV',
   sales: 'D07 — Theo Dõi Doanh Số 2026',
   manmark: 'ManMark — Cam Kết Tuần',
@@ -556,6 +559,7 @@ export default function App() {
         ) : (
           <ErrorBoundary key={activeTab}>
             {activeTab === 'dashboard' && <DashboardTab data={data} onNavigate={setActiveTab} />}
+            {activeTab === 'insights' && <InsightsTab data={data} onNavigate={setActiveTab} />}
             {activeTab === 'ga'        && <GATab        data={data} />}
             {activeTab === 'um'        && <UMTab        data={data} />}
             {activeTab === 'tvv'       && <TVVTab       data={data} />}
