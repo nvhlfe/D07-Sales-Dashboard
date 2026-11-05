@@ -388,6 +388,110 @@ export function finishScenarios({ cum, avg7, daysLeft, target, latestDateISO, ye
   }
 }
 
+// ─────────────────────────────────────────────────────────────────
+// 🏁 DỰ BÁO THI ĐUA — Memo 00211/AD/2026 (Tháng 11) + Memo 00210/AD/2026 (Quý 4)
+// Chốt của Lan (05/11/2026):
+//  - Căn cứ tính = IP PHÁT HÀNH (hồ sơ trạng thái IF, lấy ipSub của Proposal).
+//  - Pru Yên Tâm Vui Khỏe có mã sản phẩm TA9.
+//  - KHÔNG tính riêng thưởng +1tr cho IP nộp 01–07/11.
+// Memo 00211 (T11, theo IP phát hành tháng 11, chưa nhân hệ số):
+//   18–<25tr → 1,5tr · 25–<50tr → 2,5tr · 50–<100tr → 5,0tr · từ 100tr → 8% IP.
+//   (×2 thưởng chính nếu IP bán cùng ≥40% — Daily chưa có dữ liệu này, không tính.)
+//   Tổng thưởng tối đa 100tr/TVV.
+// Memo 00210 (Q4, theo IP TÍNH THƯỞNG = IP phát hành × hệ số hỗ trợ đặc biệt):
+//   T10 ×2 tất cả · T11 ×1,5 tất cả, riêng TA9 ×2 · T12 TA9 ×2, còn lại ×1.
+//   Riêng Pru-Đầu Tư Vững Tiến chỉ tính hồ sơ có IP từ 20tr.
+//   600–<900tr → iPhone 18 Pro Max 256GB · từ 900tr → iPhone Duo 256GB (quà, không quy đổi tiền).
+// ─────────────────────────────────────────────────────────────────
+export const TA9_CODE = 'TA9'
+
+export function isTA9Product(product) {
+  const s = String(product || '').toUpperCase()
+  return s.includes(TA9_CODE) || s.includes('YÊN TÂM VUI KHỎE') || s.includes('YEN TAM VUI KHOE')
+}
+export function isDTVTProduct(product) {
+  const s = String(product || '').toUpperCase()
+  return s.includes('ĐẦU TƯ VỮNG TIẾN') || s.includes('DAU TU VUNG TIEN')
+}
+
+/**
+ * IP phát hành theo TVV từ danh sách doc Daily của 1 tháng (chỉ lấy doc mới nhất —
+ * snapshot lũy kế). forQ4=true thì loại hồ sơ Đầu Tư Vững Tiến có IP < 20tr (quy định Memo 00210).
+ * Trả rows: [{ msdl, name, unit, ip, ipTA9, cases }]
+ */
+export function issuedIpByAgent(docs, { forQ4 = false } = {}) {
+  const sorted = (docs || []).filter((d) => d?.data).slice().sort((a, b) => String(a.id).localeCompare(String(b.id)))
+  const latest = sorted[sorted.length - 1]
+  if (!latest) return { latestDate: null, rows: [] }
+  const byCode = new Map()
+  ;(latest.data.proposalRows || []).forEach((p) => {
+    if (p.statusGroup !== 'IF') return
+    const ip = num(p.ipSub)
+    if (forQ4 && isDTVTProduct(p.product) && ip < 20) return
+    const code = String(p.msdl || '').trim()
+    if (!code) return
+    if (!byCode.has(code)) byCode.set(code, { msdl: code, name: p.agName || '', unit: p.unit || '', ip: 0, ipTA9: 0, cases: 0 })
+    const row = byCode.get(code)
+    row.ip += ip
+    if (isTA9Product(p.product)) row.ipTA9 += ip
+    row.cases += 1
+    if (!row.name && p.agName) row.name = p.agName
+    if (!row.unit && p.unit) row.unit = p.unit
+  })
+  return { latestDate: latest.id, rows: [...byCode.values()].sort((a, b) => b.ip - a.ip) }
+}
+
+/** Bậc thưởng tháng 11 (Memo 00211) từ IP phát hành. Đơn vị: triệu đồng. */
+export function raceNovTier(ip) {
+  const v = num(ip)
+  const tiers = [
+    { min: 100, label: 'Từ 100tr — 8% IP', bonus: (x) => x * 0.08 },
+    { min: 50, label: '50–<100tr', bonus: () => 5 },
+    { min: 25, label: '25–<50tr', bonus: () => 2.5 },
+    { min: 18, label: '18–<25tr', bonus: () => 1.5 },
+  ]
+  let cur = null
+  for (const t of tiers) if (v >= t.min) { cur = t; break }
+  const bonus = cur ? Math.min(cur.bonus(v), 100) : 0
+  const nextMin = v < 18 ? 18 : v < 25 ? 25 : v < 50 ? 50 : v < 100 ? 100 : null
+  const nextBonus = nextMin === null ? null : nextMin === 100 ? null : (nextMin === 18 ? 1.5 : nextMin === 25 ? 2.5 : 5)
+  return {
+    bonus, tierLabel: cur ? cur.label : 'Chưa đạt mốc 18tr',
+    nextMin, gap: nextMin !== null ? nextMin - v : 0,
+    nextLabel: nextMin === null ? null : nextMin === 100 ? 'mốc 100tr (thưởng 8% IP)' : `mốc ${nextMin}tr (thưởng ${String(nextBonus).replace('.', ',')}tr)`,
+  }
+}
+
+/** IP tính thưởng Quý 4 (Memo 00210) từ IP phát hành từng tháng. */
+export function q4BonusIp({ octIp = 0, novIp = 0, novIpTA9 = 0, decIp = 0, decIpTA9 = 0 } = {}) {
+  return num(octIp) * 2
+    + (num(novIp) - num(novIpTA9)) * 1.5 + num(novIpTA9) * 2
+    + (num(decIp) - num(decIpTA9)) * 1 + num(decIpTA9) * 2
+}
+
+/** Mốc quà Quý 4 (Memo 00210) từ IP tính thưởng. */
+export function q4GiftTier(bonusIp) {
+  const v = num(bonusIp)
+  if (v >= 900) return { gift: 'iPhone Duo 256GB', nextMin: null, gap: 0 }
+  if (v >= 600) return { gift: 'iPhone 18 Pro Max 256GB', nextMin: 900, gap: 900 - v }
+  return { gift: null, nextMin: 600, gap: 600 - v }
+}
+
+/**
+ * Một dòng Unit (bảng Sức khỏe Unit của Điều hành) được coi là CÓ số liệu khi
+ * có bất kỳ hoạt động nào: FYP/FYC/IP/Case (Daily), hồ sơ IF/PS/Khác, TVV có số,
+ * mục tiêu ManMark, hoặc FYC quý/L12M (AG-PE). Chỉ có nhân sự (tvvPe) mà mọi số
+ * đều 0 thì coi là Unit chưa có số liệu → mặc định ẩn khỏi bảng cho đỡ rối.
+ */
+export function unitRowHasData(r) {
+  if (!r) return false
+  return num(r.fyp) !== 0 || num(r.fyc) !== 0 || num(r.ipNet) !== 0 || num(r.caseNet) !== 0
+    || (num(r.cIF) + num(r.cPS) + num(r.cOther)) > 0
+    || num(r.tvvCoSo) > 0
+    || num(r.target) > 0
+    || num(r.fycQuy) !== 0 || num(r.fycL12m) !== 0
+}
+
 /** Phân tầng tuổi hồ sơ đang chờ (đầu ra của collectOpenCases). */
 export function ageBuckets(openCases) {
   const defs = [

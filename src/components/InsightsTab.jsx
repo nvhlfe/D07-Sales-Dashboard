@@ -7,6 +7,7 @@ import {
   monthPace, funnelStats, unitStats, nearPEList, zeroFycAgents, topBy,
   aggregateDailyMonth, forecastFromDaily,
   buildConversionRates, conversionRateFor, finishScenarios, ageBuckets,
+  issuedIpByAgent, raceNovTier, q4BonusIp, q4GiftTier, unitRowHasData,
 } from '../lib/insightsLogic'
 
 const DATA_YEAR = 2026
@@ -120,6 +121,51 @@ export default function InsightsTab({ data, onNavigate }) {
     for (let m = 1; m < month; m++) past.push(yearlyPersons[m] || [])
     return buildConversionRates(past, (p) => codeToUnit.get(String(p.msdl || '')) || p.group || '')
   }, [yearlyPersons, month, codeToUnit])
+  // ── 🏁 Thi đua T11 & Quý 4: tự nạp Daily T10/T11/T12 (độc lập tháng đang xem) ──
+  const [raceDocs, setRaceDocs] = useState(null) // { 10: docs, 11: docs, 12: docs }
+  useEffect(() => {
+    let alive = true
+    Promise.all([10, 11, 12].map(async (m) => {
+      try { return [m, await listDailySalesInMonth(DATA_YEAR, m)] } catch { return [m, []] }
+    })).then((rs) => { if (alive) setRaceDocs(Object.fromEntries(rs)) })
+    return () => { alive = false }
+  }, [])
+  const race = useMemo(() => {
+    if (!raceDocs) return null
+    const novIssued = issuedIpByAgent(raceDocs[11] || [])
+    const octQ = issuedIpByAgent(raceDocs[10] || [], { forQ4: true })
+    const novQ = issuedIpByAgent(raceDocs[11] || [], { forQ4: true })
+    const decQ = issuedIpByAgent(raceDocs[12] || [], { forQ4: true })
+    const octMap = new Map(octQ.rows.map((r) => [r.msdl, r]))
+    const novMap = new Map(novQ.rows.map((r) => [r.msdl, r]))
+    const decMap = new Map(decQ.rows.map((r) => [r.msdl, r]))
+    const codes = new Set([...octMap.keys(), ...novMap.keys(), ...decMap.keys()])
+    const q4Rows = [...codes].map((code) => {
+      const o = octMap.get(code), n = novMap.get(code), d = decMap.get(code)
+      const bonusIp = q4BonusIp({ octIp: o?.ip || 0, novIp: n?.ip || 0, novIpTA9: n?.ipTA9 || 0, decIp: d?.ip || 0, decIpTA9: d?.ipTA9 || 0 })
+      return {
+        msdl: code, name: (n || o || d)?.name || '', unit: (n || o || d)?.unit || '',
+        octIp: o?.ip || 0, novIp: n?.ip || 0, novIpTA9: n?.ipTA9 || 0, decIp: d?.ip || 0,
+        bonusIp, ...q4GiftTier(bonusIp),
+      }
+    }).filter((r) => r.bonusIp > 0).sort((a, b) => b.bonusIp - a.bonusIp)
+    // Ngày còn lại: T11 tính từ snapshot T11 mới nhất; Quý 4 tính tới 31/12
+    const novLatestDay = novIssued.latestDate ? Number(novIssued.latestDate.slice(8, 10)) : null
+    const daysLeftNov = novLatestDay ? Math.max(30 - novLatestDay, 0) : null
+    const daysLeftQ4 = novLatestDay !== null
+      ? (30 - novLatestDay) + 31
+      : (octQ.latestDate ? 30 + 31 : null)
+    const novRows = novIssued.rows.map((r) => ({ ...r, ...raceNovTier(r.ip) }))
+    return {
+      novRows, q4Rows, daysLeftNov, daysLeftQ4,
+      hasOct: (raceDocs[10] || []).length > 0, hasNov: (raceDocs[11] || []).length > 0,
+      novLatestDate: novIssued.latestDate,
+      novReached: novRows.filter((r) => r.bonus > 0).length,
+      novTotalBonus: novRows.reduce((s, r) => s + r.bonus, 0),
+      q4Gifted: q4Rows.filter((r) => r.gift).length,
+    }
+  }, [raceDocs])
+
   // Kỳ vọng phát hành theo Unit: (PS IP + Pipeline APE đang chờ) × tỷ lệ chuyển đổi riêng
   const unitExpect = useMemo(() => {
     if (!dailyAgg || !convIndex) return []
@@ -187,6 +233,13 @@ export default function InsightsTab({ data, onNavigate }) {
 
   // ── Bảng Unit: Daily + AG-PE + mục tiêu ManMark ────────────
   const [unitSearch, setUnitSearch] = useState('')
+  const [showEmptyUnits, setShowEmptyUnits] = useState(() => {
+    try { return localStorage.getItem('d07-insights-show-empty-units') === '1' } catch { return false }
+  })
+  const toggleShowEmptyUnits = (v) => {
+    setShowEmptyUnits(v)
+    try { localStorage.setItem('d07-insights-show-empty-units', v ? '1' : '0') } catch { /* bỏ qua */ }
+  }
   const [unitSort, setUnitSort] = useState({ key: 'fyp', dir: 'desc' })
   const [unitVisible, setUnitVisible, showU] = useVisibleColumns('d07-insights-unit-cols', UNIT_COLS)
   const unitTargets = useMemo(() => {
@@ -198,7 +251,7 @@ export default function InsightsTab({ data, onNavigate }) {
     })
     return map
   }, [mmDoc, agList])
-  const unitRows = useMemo(() => {
+  const unitRowsAll = useMemo(() => {
     const peMap = new Map(unitStats(agList).map((u) => [u.unit, u]))
     const dailyMap = new Map((dailyAgg?.units || []).map((u) => [u.unit, u]))
     const keys = new Set([...peMap.keys(), ...dailyMap.keys(), ...unitTargets.keys()])
@@ -231,6 +284,12 @@ export default function InsightsTab({ data, onNavigate }) {
       return unitSort.dir === 'desc' ? -diff : diff
     })
   }, [agList, dailyAgg, unitTargets, unitSearch, unitSort])
+  // Mặc định ẩn Unit chưa có số liệu (mọi chỉ số đều 0) cho bảng đỡ rối; bật toggle để xem tất cả
+  const unitRows = useMemo(
+    () => (showEmptyUnits ? unitRowsAll : unitRowsAll.filter(unitRowHasData)),
+    [unitRowsAll, showEmptyUnits]
+  )
+  const emptyUnitsHidden = unitRowsAll.length - unitRows.length
   const onUnitSort = (key) => setUnitSort((s) => s.key === key
     ? { key, dir: s.dir === 'desc' ? 'asc' : 'desc' }
     : { key, dir: 'desc' })
@@ -428,6 +487,91 @@ export default function InsightsTab({ data, onNavigate }) {
           '#7209b7', 'tvv')}
       </div>
 
+      {/* ── 2b. 🏁 Dự báo thi đua T11 (Memo 00211) & Quý 4 (Memo 00210) ── */}
+      <div className="card" style={{ marginBottom: 16, border: '2px solid #ffd16655' }}>
+        <div className="section-header">
+          <div className="section-icon">🏁</div>
+          DỰ BÁO THI ĐUA THÁNG 11 &amp; QUÝ 4 — THEO IP PHÁT HÀNH
+          <span style={{ marginLeft: 'auto', fontSize: 10.5, color: '#8896aa', fontWeight: 500 }}>
+            Memo 00211 (T11) · Memo 00210 (Q4)
+          </span>
+        </div>
+        {!race ? <div className="empty-state">Đang tải Daily T10–T12…</div> : !race.hasNov && !race.hasOct ? (
+          <div className="empty-state">Chưa có Daily Sales tháng 10/11 đã lưu nên chưa tính được thi đua. Lan nạp Daily ở tab TVV Hàng Ngày rồi quay lại đây nhé.</div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              <span style={{ background: '#fff7e0', color: '#92400e', padding: '4px 10px', borderRadius: 12, fontSize: 11.5, fontWeight: 700 }}>
+                T11: {race.novReached} TVV đã chạm mốc thưởng · tổng thưởng dự kiến {formatNum(race.novTotalBonus)} tr
+              </span>
+              <span style={{ background: '#eef2ff', color: '#4361ee', padding: '4px 10px', borderRadius: 12, fontSize: 11.5, fontWeight: 700 }}>
+                Q4: {race.q4Gifted} TVV đang ở mốc có quà iPhone
+              </span>
+              {race.daysLeftNov !== null && (
+                <span style={{ background: '#f1f3f9', color: '#5b6478', padding: '4px 10px', borderRadius: 12, fontSize: 11.5, fontWeight: 700 }}>
+                  T11 còn {race.daysLeftNov} ngày (từ snapshot {race.novLatestDate ? fmtDate(race.novLatestDate) : '—'})
+                </span>
+              )}
+              {!race.hasOct && (
+                <span style={{ background: '#fff0f0', color: '#b91c1c', padding: '4px 10px', borderRadius: 12, fontSize: 11.5, fontWeight: 700 }}>
+                  Chưa có Daily tháng 10 đã lưu — phần Quý 4 tạm tính riêng từ tháng 11
+                </span>
+              )}
+            </div>
+
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#1a1f36', margin: '4px 0 6px' }}>Tháng 11 — Memo 00211 (IP phát hành, chưa nhân hệ số)</div>
+            {race.novRows.length === 0 ? <div className="empty-state">Chưa có TVV nào có IP phát hành trong tháng 11.</div> : (
+              <div style={{ overflowX: 'auto', maxHeight: 380, overflowY: 'auto', marginBottom: 14 }}>
+                <table className="data-table">
+                  <thead><tr><th>TVV</th><th>Unit</th><th>IP phát hành T11</th><th>Bậc hiện tại</th><th>Thưởng dự kiến</th><th>Còn thiếu tới mốc kế</th><th>Cần / ngày</th></tr></thead>
+                  <tbody>
+                    {race.novRows.map((r) => (
+                      <tr key={r.msdl}>
+                        <td><strong>{r.name || r.msdl}</strong><div style={{ fontSize: 10, color: '#8896aa' }}>{r.msdl}</div></td>
+                        <td>{r.unit || '—'}</td>
+                        <td style={{ fontWeight: 700 }}>{formatNum(r.ip)} tr</td>
+                        <td style={{ fontSize: 11.5 }}>{r.tierLabel}</td>
+                        <td style={{ fontWeight: 800, color: r.bonus > 0 ? '#065f46' : '#8896aa' }}>{r.bonus > 0 ? `${formatNum2(r.bonus)} tr` : '—'}</td>
+                        <td>{r.nextMin !== null ? <>{formatNum2(r.gap)} tr <span style={{ fontSize: 10.5, color: '#8896aa' }}>({r.nextLabel})</span></> : 'Đã ở bậc cao nhất'}</td>
+                        <td>{r.nextMin !== null && race.daysLeftNov > 0 ? `${formatNum2(r.gap / race.daysLeftNov)} tr` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#1a1f36', margin: '4px 0 6px' }}>Quý 4 — Memo 00210 (IP tính thưởng đã nhân hệ số: T10 ×2 · T11 ×1,5, TA9 ×2 · T12 TA9 ×2)</div>
+            {race.q4Rows.length === 0 ? <div className="empty-state">Chưa có dữ liệu IP phát hành trong Quý 4.</div> : (
+              <div style={{ overflowX: 'auto', maxHeight: 380, overflowY: 'auto' }}>
+                <table className="data-table">
+                  <thead><tr><th>TVV</th><th>Unit</th><th>IP T10 (×2)</th><th>IP T11 (trong đó TA9)</th><th>IP tính thưởng Q4</th><th>Quà dự kiến</th><th>Còn thiếu tới mốc kế</th><th>Cần / ngày tới 31/12</th></tr></thead>
+                  <tbody>
+                    {race.q4Rows.map((r) => (
+                      <tr key={r.msdl}>
+                        <td><strong>{r.name || r.msdl}</strong><div style={{ fontSize: 10, color: '#8896aa' }}>{r.msdl}</div></td>
+                        <td>{r.unit || '—'}</td>
+                        <td>{formatNum(r.octIp)} tr</td>
+                        <td>{formatNum(r.novIp)} tr <span style={{ fontSize: 10.5, color: '#8896aa' }}>(TA9 {formatNum(r.novIpTA9)})</span></td>
+                        <td style={{ fontWeight: 800, color: '#7209b7' }}>{formatNum(r.bonusIp)} tr</td>
+                        <td style={{ fontWeight: 700, color: r.gift ? '#065f46' : '#8896aa' }}>{r.gift || 'Chưa đạt 600tr'}</td>
+                        <td>{r.nextMin !== null ? `${formatNum2(r.gap)} tr (mốc ${r.nextMin}tr)` : 'Đã ở mốc cao nhất'}</td>
+                        <td>{r.nextMin !== null && race.daysLeftQ4 > 0 ? `${formatNum2(r.gap / race.daysLeftQ4)} tr` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <div style={{ marginTop: 8, fontSize: 11, color: '#8896aa' }}>
+              Căn cứ: IP phát hành = hồ sơ trạng thái IF trong Proposal của snapshot Daily mới nhất từng tháng. Chưa tính: thưởng +1tr tuần 01–07/11 (theo yêu cầu bỏ qua),
+              hệ số ×2 thưởng chính khi IP bán cùng ≥40% (Daily chưa có dữ liệu tỷ lệ bán cùng). Hồ sơ Pru-Đầu Tư Vững Tiến dưới 20tr IP không tính vào Quý 4 theo memo.
+              Quà Quý 4 là hiện vật theo memo, không quy đổi tiền. Đây là dự báo để điều hành, không phải kết quả chốt chính thức.
+            </div>
+          </>
+        )}
+      </div>
+
       {/* ── 3. Sức khỏe Unit (Daily + AG-PE + ManMark) ── */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="section-header">
@@ -462,10 +606,21 @@ export default function InsightsTab({ data, onNavigate }) {
             placeholder="🔍 Lọc theo Unit hoặc tên Leader..."
           />
           <ColumnToggle columns={UNIT_COLS} visible={unitVisible} onChange={setUnitVisible} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#5b6478', cursor: 'pointer', userSelect: 'none' }}>
+            <input type="checkbox" checked={showEmptyUnits} onChange={(e) => toggleShowEmptyUnits(e.target.checked)} />
+            Hiện Unit chưa có số liệu
+            {emptyUnitsHidden > 0 && <span style={{ color: '#b91c1c', fontWeight: 700 }}>(đang ẩn {emptyUnitsHidden})</span>}
+          </label>
           <div style={{ fontSize: 12, color: '#8896aa' }}>{unitRows.length} Unit</div>
         </div>
 
-        {unitRows.length === 0 ? <div className="empty-state">Không có dữ liệu Unit cho tháng này.</div> : (
+        {unitRows.length === 0 ? (
+          <div className="empty-state">
+            {unitRowsAll.length > 0
+              ? 'Tất cả Unit khớp bộ lọc đều chưa có số liệu — bật “Hiện Unit chưa có số liệu” ở trên để xem.'
+              : 'Không có dữ liệu Unit cho tháng này.'}
+          </div>
+        ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="data-table">
               <thead>
