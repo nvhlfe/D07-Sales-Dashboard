@@ -44,6 +44,8 @@ body {
 /* SIDEBAR */
 .sidebar {
   width: 220px; min-width: 220px;
+  transition: width 0.25s ease, min-width 0.25s ease;
+  overflow: hidden;
   background: linear-gradient(180deg, #1a1f5e 0%, #2d3580 100%);
   color: white;
   display: flex; flex-direction: column;
@@ -86,7 +88,7 @@ body {
 .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
 
 /* MAIN */
-.main-content { margin-left: 220px; flex: 1; }
+.main-content { margin-left: 220px; flex: 1; transition: margin-left 0.25s ease; }
 
 /* TOPBAR */
 .topbar {
