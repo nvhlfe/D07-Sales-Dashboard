@@ -5,6 +5,7 @@ import {
 } from './lib/db'
 import DashboardTab from './components/DashboardTab'
 import InsightsTab from './components/InsightsTab'
+import SoSanLuongTab from './components/SoSanLuongTab'
 import GATab from './components/GATab'
 import UMTab from './components/UMTab'
 import TVVTab from './components/TVVTab'
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { id: 'sales',     label: 'Sales Report', icon: '📋' },
   { id: 'manmark',   label: 'ManMark',   icon: '📆' },
   { id: 'tvvdaily',  label: 'TVV Hàng Ngày', icon: '📈' },
+  { id: 'sosanluong', label: 'Sổ Sản Lượng', icon: '📋' },
 ]
 const TAB_TITLES = {
   dashboard: 'Dashboard Tổng Quan — GA D07 Quận 7',
@@ -33,6 +35,7 @@ const TAB_TITLES = {
   sales: 'D07 — Theo Dõi Doanh Số 2026',
   manmark: 'ManMark — Cam Kết Tuần',
   tvvdaily: 'Theo Dõi Kinh Doanh TVV Hàng Ngày',
+  sosanluong: 'Sổ Sản Lượng — GA D07',
 }
 
 const EMPTY_DATA = {
@@ -565,6 +568,7 @@ export default function App() {
             {activeTab === 'tvv'       && <TVVTab       data={data} />}
             {activeTab === 'manmark'   && <ManMarkTab />}
             {activeTab === 'tvvdaily'  && <TvvDailyTab />}
+            {activeTab === 'sosanluong' && <SoSanLuongTab />}
           </ErrorBoundary>
         )}
 
