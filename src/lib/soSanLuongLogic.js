@@ -281,6 +281,37 @@ export function analyzeSoSanLuong(curDocs, prevDocs, { year, month }) {
 }
 
 /**
+ * ⑭ Nhóm hồ sơ chờ theo LÝ DO (các yêu cầu còn thiếu trong sheet Pending).
+ * pendingAll: mảng hồ sơ chờ từ analyzeSoSanLuong (mỗi hồ sơ có reasons[]).
+ * Một hồ sơ thiếu nhiều mục sẽ nằm ở nhiều nhóm — UI phải ghi chú điều này;
+ * tổng số hồ sơ phân biệt trả riêng ở distinctCases.
+ * Trả [{ reason, count, totalApe, oldest, cases[] }] xếp theo count giảm dần.
+ */
+export const UNKNOWN_REASON = 'Chưa rõ lý do (chưa có chi tiết Pending)'
+export function groupPendingByReason(pendingAll) {
+  const groups = new Map()
+  const distinct = new Set()
+  ;(pendingAll || []).forEach((c) => {
+    const key = String(c.proposalNum || '') || `${c.msdl}|${c.name}`
+    distinct.add(key)
+    const reasons = (c.reasons && c.reasons.length) ? c.reasons : [UNKNOWN_REASON]
+    reasons.forEach((r) => {
+      const name = String(r || '').trim() || UNKNOWN_REASON
+      if (!groups.has(name)) groups.set(name, { reason: name, count: 0, totalApe: 0, oldest: null, cases: [] })
+      const g = groups.get(name)
+      g.count += 1
+      g.totalApe += num(c.ape ?? c.ipSub)
+      g.cases.push(c)
+      if (!g.oldest || (c.ageDays ?? -1) > (g.oldest.ageDays ?? -1)) g.oldest = c
+    })
+  })
+  const arr = [...groups.values()]
+  arr.forEach((g) => g.cases.sort((a, b) => (b.ageDays ?? -1) - (a.ageDays ?? -1)))
+  arr.sort((a, b) => b.count - a.count || b.totalApe - a.totalApe)
+  return { groups: arr, distinctCases: distinct.size }
+}
+
+/**
  * Che số nhạy cảm (số HSYC / số hợp đồng) ở mức HIỂN THỊ: chỉ hiện 2 ký tự cuối.
  * canSeeFull=true (tài khoản quản trị cao nhất) thì hiện đầy đủ.
  * LƯU Ý: đây là che phía client — dữ liệu gốc vẫn nằm trong Firestore,

@@ -13,6 +13,9 @@ import {
   findOrCreatePerson, dayFromProposalDate, buildSummaryExportAoa,
   buildOverviewExportAoa, buildTonExportAoa,
 } from '../lib/salesReportLogic'
+import html2canvas from 'html2canvas'
+import { analyzeSoSanLuong, groupPendingByReason, maskSensitive } from '../lib/soSanLuongLogic'
+import { formatNum } from '../utils/parseExcel'
 
 // ─────────────────────────────────────────────────────────────
 // Sales Report — port React native từ bản standalone đang chạy
@@ -50,11 +53,100 @@ function FeeInput({ value, resetNonce, disabled, onCommit }) {
   )
 }
 
+// ⑭ Nhóm hồ sơ chờ theo lý do (từ sheet Pending của Daily mới nhất trong tháng).
+// Một hồ sơ thiếu nhiều mục sẽ xuất hiện ở nhiều nhóm — đã ghi chú ngay trên thẻ.
+function PendingReasonGroups({ year, month }) {
+  const { isSuperAdmin } = useAuth()
+  const [st, setSt] = useState({ loading: true, asOf: null, groups: [], distinct: 0, hasData: false })
+  const [openReason, setOpenReason] = useState(null)
+  useEffect(() => {
+    let alive = true
+    setSt((prev) => ({ ...prev, loading: true }))
+    listDailySalesInMonth(year, month)
+      .then((docs) => {
+        if (!alive) return
+        const analysis = analyzeSoSanLuong(docs, [], { year, month })
+        const { groups, distinctCases } = groupPendingByReason(analysis.pendingAll)
+        setSt({ loading: false, asOf: analysis.asOf, groups, distinct: distinctCases, hasData: analysis.hasData })
+      })
+      .catch(() => { if (alive) setSt({ loading: false, asOf: null, groups: [], distinct: 0, hasData: false }) })
+    return () => { alive = false }
+  }, [year, month])
+
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <div style={{ fontWeight: 800, fontSize: 13.5, color: '#1a1f5e', marginBottom: 2 }}>
+        🧩 Hồ sơ chờ theo lý do
+        {st.asOf ? <span style={{ fontWeight: 500, color: '#8896aa', fontSize: 11.5 }}> · theo Daily {st.asOf.slice(8, 10)}/{st.asOf.slice(5, 7)}</span> : null}
+      </div>
+      {st.loading ? (
+        <div style={{ fontSize: 12, color: '#8896aa' }}>Đang tải dữ liệu Daily…</div>
+      ) : !st.hasData ? (
+        <div style={{ fontSize: 12, color: '#8896aa' }}>Chưa có dữ liệu Daily của tháng này nên chưa nhóm được lý do chờ.</div>
+      ) : st.groups.length === 0 ? (
+        <div style={{ fontSize: 12, color: '#15803d', fontWeight: 600 }}>Không còn hồ sơ nào đang chờ. 🎉</div>
+      ) : (
+        <>
+          <div style={{ fontSize: 11.5, color: '#8896aa', marginBottom: 8 }}>
+            Tổng {st.distinct} hồ sơ đang chờ. Một hồ sơ thiếu nhiều mục sẽ nằm ở nhiều nhóm. Bấm vào một lý do để xem các hồ sơ thuộc nhóm đó.
+          </div>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left' }}>Lý do chờ</th>
+                <th style={{ textAlign: 'center' }}>Số HS</th>
+                <th style={{ textAlign: 'center' }}>Tổng APE (tr)</th>
+                <th style={{ textAlign: 'left' }}>Hồ sơ lâu nhất</th>
+              </tr>
+            </thead>
+            <tbody>
+              {st.groups.map((g) => (
+                <React.Fragment key={g.reason}>
+                  <tr onClick={() => setOpenReason(openReason === g.reason ? null : g.reason)} style={{ cursor: 'pointer' }}>
+                    <td style={{ fontWeight: 600 }}>{openReason === g.reason ? '▾' : '▸'} {g.reason}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 700 }}>{g.count}</td>
+                    <td style={{ textAlign: 'center' }}>{formatNum(g.totalApe)}</td>
+                    <td>{g.oldest ? `${g.oldest.name || g.oldest.msdl} · ${g.oldest.unit || '—'} · chờ ${g.oldest.ageDays ?? '—'} ngày` : '—'}</td>
+                  </tr>
+                  {openReason === g.reason && g.cases.map((c, ci) => (
+                    <tr key={g.reason + '|' + (c.proposalNum || '') + '|' + c.msdl + '|' + ci} style={{ background: '#f8f9ff' }}>
+                      <td colSpan={4} style={{ paddingLeft: 24, fontSize: 12 }}>
+                        {c.name || c.msdl} · {c.unit || '—'} · HSYC {maskSensitive(c.proposalNum, isSuperAdmin)} · chờ {c.ageDays ?? '—'} ngày · APE {formatNum(c.ape ?? c.ipSub)}tr
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function SalesReportTab() {
   const nowD = new Date()
   const [year, setYear] = useState(nowD.getFullYear())
   const [month, setMonth] = useState(nowD.getMonth() + 1)
   const { user, isAdmin } = useAuth()
+  // ④ Xuất ảnh PNG bảng Tổng hợp để gửi Zalo
+  const summaryCardRef = useRef(null)
+  const [exportingImg, setExportingImg] = useState(false)
+  const exportSummaryImage = async () => {
+    if (!summaryCardRef.current || exportingImg) return
+    setExportingImg(true)
+    try {
+      const canvas = await html2canvas(summaryCardRef.current, { scale: 2, backgroundColor: '#ffffff', logging: false })
+      const a = document.createElement('a')
+      a.href = canvas.toDataURL('image/png')
+      a.download = `TongHop-SalesReport-T${month}-${year}.png`
+      a.click()
+    } catch (e) {
+      console.error('Xuất ảnh Tổng hợp lỗi:', e)
+      alert('Không tạo được ảnh, Lan thử lại giúp tôi.')
+    } finally { setExportingImg(false) }
+  }
   const { data: repDoc, source: repSource, loading: repLoading } = useReportsDoc(year, month)
   const { items: tvvRemote } = useTvvDirectory()
   const { entries: auditEntries } = useAuditLog(`${year}-${month}`)
@@ -1007,8 +1099,18 @@ export default function SalesReportTab() {
           </div>
         </div>
       ) : tab === 'summary' ? (
-        <div className="card" style={{ padding: 0, overflow: 'auto' }}>
-          <table className="data-table">
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <button onClick={exportSummaryImage} disabled={exportingImg} style={btnStyle('#e0f2fe', '#0369a1')}>
+              {exportingImg ? '⏳ Đang tạo ảnh…' : '📸 Xuất ảnh (gửi Zalo)'}
+            </button>
+          </div>
+          <div className="card" ref={summaryCardRef} style={{ padding: 0, overflow: 'auto', background: '#fff' }}>
+            <div style={{ padding: '14px 16px 2px' }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: '#1a1f5e' }}>GA D07 — TỔNG HỢP SALES REPORT</div>
+              <div style={{ fontSize: 11.5, color: '#8896aa' }}>Tháng {month}/{year} · {summaryRows.length} TVV · Tổng phí {fmtVnd(summaryTotals.fee)} · Phát hành {fmtVnd(summaryTotals.issued)}</div>
+            </div>
+            <table className="data-table">
             <thead>
               <tr>
                 <th style={{ textAlign: 'center' }}>STT</th>
@@ -1051,11 +1153,13 @@ export default function SalesReportTab() {
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
       ) : null}
 
       {tab === 'pending' && !repLoading && (
         <div>
+          <PendingReasonGroups year={year} month={month} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
             <span style={{ fontSize: 12, color: '#5a6b87' }}>
               Tất cả hồ sơ <b>chưa phát hành</b> trong tháng, xếp theo tuổi hồ sơ lâu nhất trước. Bấm <b>🟢 PH</b> để đánh dấu đã phát hành ngay tại đây.

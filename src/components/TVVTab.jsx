@@ -1,4 +1,13 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { listDailySalesInMonth } from '../lib/db'
+import { analyzeSoSanLuong } from '../lib/soSanLuongLogic'
+import { diagnoseActivation, ACTIVE_IP_THRESHOLD } from '../lib/activationLogic'
+
+const DIAG_GROUPS = [
+  { id: 'chuaNop', label: 'Chưa nộp hồ sơ nào', color: '#c0243c', hint: 'Chưa có hồ sơ IF/PS/Pipeline nào trong tháng — vấn đề ở khâu tiếp cận khách, mở hàng.' },
+  { id: 'ketPending', label: 'Có hồ sơ kẹt pending', color: '#b45309', hint: 'Đã nộp nhưng hồ sơ đang chờ xử lý — đẩy các hồ sơ chờ này là đường nhanh nhất tới mốc.' },
+  { id: 'nopThua', label: 'Nộp thưa, chưa đủ nhịp', color: '#4361ee', hint: 'Đã nộp/phát hành nhưng còn thiếu nhiều so với mốc — cần tăng nhịp nộp hồ sơ.' },
+]
 import { formatNum } from '../utils/parseExcel'
 import TVVModal from './TVVModal'
 import ColumnToggle, { useVisibleColumns } from './ColumnToggle'
@@ -127,6 +136,32 @@ export default function TVVTab({ data }) {
   const totalFyc = agList.reduce((s, a) => s + (parseFloat(a.fyc) || 0), 0)
   const colSpan = 2 + visibleCols.length
 
+  // ── ⑲ Chẩn đoán TVV chưa Active (theo Daily mới nhất) ──
+  const [diag, setDiag] = useState(null)
+  const [diagGroup, setDiagGroup] = useState('ketPending')
+  const [diagOpen, setDiagOpen] = useState(true)
+  const diagKeyRef = useRef('')
+  useEffect(() => {
+    const nowD = new Date()
+    const key = `${nowD.getFullYear()}-${nowD.getMonth() + 1}|${(data?.agList || []).length}`
+    if (diagKeyRef.current === key) return
+    diagKeyRef.current = key
+    let alive = true
+    ;(async () => {
+      const fetchMonth = async (y, m) => ({ docs: await listDailySalesInMonth(y, m).catch(() => []), y, m })
+      let { docs, y, m } = await fetchMonth(nowD.getFullYear(), nowD.getMonth() + 1)
+      if (!docs.length) {
+        const prev = new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1)
+        ;({ docs, y, m } = await fetchMonth(prev.getFullYear(), prev.getMonth() + 1))
+      }
+      if (!alive) return
+      const analysis = analyzeSoSanLuong(docs, [], { year: y, month: m })
+      const roster = (data?.agList || []).map((a) => ({ msdl: String(a.msddl || ''), name: a.agentName || '', unit: a.unit || '' }))
+      setDiag({ asOf: analysis.asOf, hasData: analysis.hasData, result: diagnoseActivation(roster, analysis.agents) })
+    })()
+    return () => { alive = false }
+  }, [data])
+
   return (
     <div className="page-content">
       <div className="page-head">
@@ -159,6 +194,95 @@ export default function TVVTab({ data }) {
           </div>
           <div style={{ fontSize: 10, color: '#8896aa' }}>triệu VND</div>
         </div>
+      </div>
+
+      {/* ── ⑲ Chẩn đoán TVV chưa Active ── */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div onClick={() => setDiagOpen((o) => !o)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: '#1a1f5e' }}>🔎 Chẩn đoán TVV chưa Active</span>
+          {diag?.asOf && <span style={{ fontSize: 11.5, color: '#8896aa' }}>theo Daily {diag.asOf.slice(8, 10)}/{diag.asOf.slice(5, 7)}/{diag.asOf.slice(0, 4)}</span>}
+          {diag?.result && <span style={{ fontSize: 11.5, fontWeight: 700, color: '#c0243c' }}>{diag.result.total - diag.result.activeCount} / {diag.result.total} TVV chưa Active</span>}
+          <span style={{ marginLeft: 'auto', color: '#8896aa' }}>{diagOpen ? '▾' : '▸'}</span>
+        </div>
+        {diagOpen && (
+          diag === null ? <div style={{ fontSize: 12, color: '#8896aa', marginTop: 8 }}>Đang phân tích dữ liệu Daily…</div>
+          : !diag.hasData ? <div style={{ fontSize: 12, color: '#8896aa', marginTop: 8 }}>Chưa có dữ liệu Daily để chẩn đoán.</div>
+          : (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11.5, color: '#8896aa', marginBottom: 10 }}>
+                Chuẩn tính: Active = IP phát hành ròng trong tháng ≥ {ACTIVE_IP_THRESHOLD}tr (theo Sổ Sản Lượng, đã trừ CF liên tháng).
+                Mỗi TVV chưa Active nằm ở đúng 1 nhóm nguyên nhân — bấm vào nhóm để xem danh sách, xếp theo người sắp qua mốc nhất lên đầu.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+                {DIAG_GROUPS.map((g) => {
+                  const list = diag.result.groups[g.id]
+                  const quaMoc = g.id === 'ketPending' ? list.filter((x) => x.quaMocNeuThong).length : 0
+                  return (
+                    <div key={g.id} onClick={() => setDiagGroup(g.id)}
+                      style={{ border: `2px solid ${diagGroup === g.id ? g.color : '#e3e8f2'}`, borderRadius: 10, padding: '10px 12px', cursor: 'pointer', background: diagGroup === g.id ? '#f8f9ff' : '#fff' }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: g.color }}>{g.label.toUpperCase()}</div>
+                      <div style={{ fontSize: 24, fontWeight: 800, color: g.color }}>{list.length}</div>
+                      <div style={{ fontSize: 11, color: '#5a6b87' }}>{g.hint}</div>
+                      {quaMoc > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: '#0f9d58', marginTop: 4 }}>✓ {quaMoc} người đẩy pending là qua mốc</div>}
+                    </div>
+                  )
+                })}
+              </div>
+              {(() => {
+                const g = DIAG_GROUPS.find((x) => x.id === diagGroup)
+                const list = diag.result.groups[diagGroup]
+                return (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: g.color, marginBottom: 6 }}>{g.label} — {list.length} TVV</div>
+                    {list.length === 0 ? <div style={{ fontSize: 12, color: '#8896aa' }}>Không có TVV nào ở nhóm này. 🎉</div> : (
+                      <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                        {list.slice(0, 40).map((pp) => (
+                          <div key={pp.msdl} style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '5px 0', borderBottom: '1px dashed #e3e8f2', fontSize: 12.5, flexWrap: 'wrap' }}>
+                            <span style={{ fontWeight: 700 }}>{pp.name || pp.msdl}</span>
+                            <span style={{ color: '#8896aa' }}>{pp.unit || '—'} · {pp.msdl}</span>
+                            {diagGroup !== 'chuaNop' && <span>IP ròng <b>{formatNum(pp.netIp)}tr</b> · thiếu <b style={{ color: '#c0243c' }}>{formatNum(pp.thieu)}tr</b></span>}
+                            {diagGroup === 'ketPending' && <span>đang chờ {pp.pendN} HS ({formatNum(pp.pendIp)}tr)</span>}
+                            {diagGroup === 'nopThua' && <span>đã nộp {pp.subN} HS</span>}
+                            {pp.quaMocNeuThong && <span style={{ fontWeight: 700, color: '#0f9d58' }}>✓ Đẩy pending là qua mốc</span>}
+                          </div>
+                        ))}
+                        {list.length > 40 && <div style={{ fontSize: 11.5, color: '#8896aa', paddingTop: 6 }}>… và {list.length - 40} TVV nữa</div>}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+              <div style={{ overflowX: 'auto' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left' }}>Unit</th>
+                      <th style={{ textAlign: 'center' }}>Tổng TVV</th>
+                      <th style={{ textAlign: 'center' }}>Đã Active</th>
+                      <th style={{ textAlign: 'center' }}>% Active</th>
+                      <th style={{ textAlign: 'center' }}>Chưa nộp</th>
+                      <th style={{ textAlign: 'center' }}>Kẹt pending</th>
+                      <th style={{ textAlign: 'center' }}>Nộp thưa</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {diag.result.byUnit.map((u) => (
+                      <tr key={u.unit}>
+                        <td style={{ fontWeight: 700 }}>{u.unit}</td>
+                        <td style={{ textAlign: 'center' }}>{u.total}</td>
+                        <td style={{ textAlign: 'center', color: '#0f9d58', fontWeight: 700 }}>{u.active}</td>
+                        <td style={{ textAlign: 'center' }}>{u.activePct}%</td>
+                        <td style={{ textAlign: 'center', color: '#c0243c', fontWeight: 600 }}>{u.chuaNop}</td>
+                        <td style={{ textAlign: 'center', color: '#b45309', fontWeight: 600 }}>{u.ketPending}</td>
+                        <td style={{ textAlign: 'center', color: '#4361ee', fontWeight: 600 }}>{u.nopThua}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        )}
       </div>
 
       <div className="card">

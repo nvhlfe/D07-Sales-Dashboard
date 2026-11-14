@@ -254,6 +254,7 @@ function buildRows({ mm, weeks, reportData, official, statuses, yearly, actualSo
     const weeksData = weeks.map((w, wi) => ({
       ckfyp: (weekly[wi] || {}).fyp || 0,
       tdfyp: (actuals[wi] || {}).fyp || 0,
+      diff: Math.round(((actuals[wi] || {}).fyp || 0) - ((weekly[wi] || {}).fyp || 0)),
       confirmedFyp: (actuals[wi] || {}).confirmedFyp || 0,
       potentialFyp: (actuals[wi] || {}).potentialFyp || 0,
       ckhs: (weekly[wi] || {}).hs || 0,
@@ -289,7 +290,7 @@ function getColValue(row, colId) {
   if (colId === 'monthDiff') return row.monthDiff
   if (colId === 'pending') return row.pending.value
   if (colId === 'forecast') return row.forecast
-  const m = colId.match(/^w(\d+)_(ckfyp|tdfyp|ckhs|tdhs|note)$/)
+  const m = colId.match(/^w(\d+)_(ckfyp|tdfyp|ckhs|tdhs|diff|note)$/)
   if (m) return row.weeks[+m[1]]?.[m[2]]
   return ''
 }
@@ -368,7 +369,7 @@ export default function ManMarkTab() {
       commits: m.commits || {},
       notes: m.notes || {},
       excluded: m.excluded || {},
-      dataSource: m.dataSource === 'official' ? 'official' : 'salesreport',
+      dataSource: m.dataSource === 'salesreport' ? 'salesreport' : 'official', // ③ mặc định lấy thực đạt từ Daily chính thức (Lan chốt 14/11)
       weeksSeeded: m.weeksSeeded,
     }
   }, [mmRaw, year, month])
@@ -599,11 +600,11 @@ export default function ManMarkTab() {
   // ── Export Excel ──
   const exportExcel = () => {
     const header = ['STT', 'Unit', 'Mã TVV', 'Tên TVV', 'AG Segment', 'Cam kết tháng', 'Thực đạt tháng', 'Chênh lệch', 'Pending', 'Dự báo tháng']
-    weeks.forEach((w) => header.push(`${w.label} CK FYP`, `${w.label} TĐ FYP`, `${w.label} CK HS`, `${w.label} TĐ HS`, `${w.label} Ghi chú`))
+    weeks.forEach((w) => header.push(`${w.label} CK FYP`, `${w.label} TĐ FYP`, `${w.label} CK HS`, `${w.label} TĐ HS`, `${w.label} Lệch FYP`, `${w.label} Ghi chú`))
     const aoa = [header]
     rows.forEach((row, i) => {
       const r = [i + 1, row.unit, row.code, row.name, row.segment, row.monthTarget, row.monthActual, Math.round(row.monthDiff), row.pending.value, Math.round(row.forecast)]
-      row.weeks.forEach((wd) => r.push(wd.ckfyp, wd.tdfyp, wd.ckhs, wd.tdhs, wd.note))
+      row.weeks.forEach((wd) => r.push(wd.ckfyp, wd.tdfyp, wd.ckhs, wd.tdhs, wd.diff, wd.note))
       aoa.push(r)
     })
     const ws = XLSX.utils.aoa_to_sheet(aoa)
@@ -723,13 +724,13 @@ export default function ManMarkTab() {
                   <th rowSpan="3" className="sortable" onClick={() => toggleSort('monthDiff')} style={{ minWidth: 80 }}>Chênh lệch{arrow('monthDiff')}</th>
                   <th rowSpan="3" className="grp-pending sortable" onClick={() => toggleSort('pending')} style={{ minWidth: 70 }} title="Tổng APE hồ sơ đang chờ xử lý (chưa PH, chưa rút)">Pending{arrow('pending')}</th>
                   <th rowSpan="3" className="grp-forecast sortable" onClick={() => toggleSort('forecast')} style={{ minWidth: 90 }} title="Đã chắc + tỷ lệ chuyển đổi lịch sử × (tiềm năng + pending)">Dự báo tháng{arrow('forecast')}</th>
-                  {visWeeks.map(({ w, wi }) => <th key={wi} className="week-head" colSpan="5">{w.label} ({w.start}–{w.end})</th>)}
+                  {visWeeks.map(({ w, wi }) => <th key={wi} className="week-head" colSpan="6">{w.label} ({w.start}–{w.end})</th>)}
                   {isAdmin && <th rowSpan="3" style={{ minWidth: 34 }}>Xoá</th>}
                 </tr>
                 <tr>
                   {visWeeks.map(({ wi }) => (
                     <React.Fragment key={wi}>
-                      {[['ckfyp', 'CK FYP'], ['tdfyp', 'TĐ FYP'], ['ckhs', 'CK HS'], ['tdhs', 'TĐ HS'], ['note', 'Ghi chú']].map(([f, lbl]) => {
+                      {[['ckfyp', 'CK FYP'], ['tdfyp', 'TĐ FYP'], ['ckhs', 'CK HS'], ['tdhs', 'TĐ HS'], ['diff', 'Lệch'], ['note', 'Ghi chú']].map(([f, lbl]) => {
                         const id = `w${wi}_${f}`
                         const grp = (f === 'tdfyp' || f === 'tdhs') ? 'grp-actual' : ''
                         return <th key={id} className={`week-head sortable ${grp}`} onClick={() => toggleSort(id)}>{lbl}{arrow(id)}</th>
@@ -749,7 +750,7 @@ export default function ManMarkTab() {
                   <th className="grp-forecast"><FilterInput value={filters.forecast} onChange={(v) => setFilter('forecast', v)} /></th>
                   {visWeeks.map(({ wi }) => (
                     <React.Fragment key={wi}>
-                      {['ckfyp', 'tdfyp', 'ckhs', 'tdhs', 'note'].map((f) => {
+                      {['ckfyp', 'tdfyp', 'ckhs', 'tdhs', 'diff', 'note'].map((f) => {
                         const id = `w${wi}_${f}`
                         const grp = (f === 'tdfyp' || f === 'tdhs') ? 'grp-actual' : ''
                         return <th key={id} className={`week-head ${grp}`}><FilterInput value={filters[id]} onChange={(v) => setFilter(id, v)} /></th>
@@ -846,6 +847,9 @@ export default function ManMarkTab() {
                             ) : fmt(wd.ckhs)}
                           </td>
                           <td className={`mm-actual grp-actual ${statusClass(wd.tdhs, wd.ckhs)}`}>{fmt(wd.tdhs)}</td>
+                          <td style={{ fontWeight: 700, color: wd.ckfyp === 0 && wd.tdfyp === 0 ? '#8896aa' : wd.diff >= 0 ? '#0f9d58' : '#c0243c' }}>
+                            {wd.ckfyp === 0 && wd.tdfyp === 0 ? '—' : `${wd.diff > 0 ? '+' : ''}${fmt(wd.diff)}`}
+                          </td>
                           <td>
                             {isAdmin ? (
                               <input
@@ -891,6 +895,7 @@ export default function ManMarkTab() {
                           <td>{fmt(wt.tdFyp)}</td>
                           <td>{fmt(wt.ckHs)}</td>
                           <td>{fmt(wt.tdHs)}</td>
+                          <td style={{ fontWeight: 700, color: (wt.tdFyp - wt.ckFyp) >= 0 ? '#0f9d58' : '#c0243c' }}>{fmt(wt.tdFyp - wt.ckFyp)}</td>
                           <td />
                         </React.Fragment>
                       )

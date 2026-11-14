@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { formatNum, formatNum2 } from '../utils/parseExcel'
 import TargetProgress from './TargetProgress'
 import TrendChart from './TrendChart'
 import YoYComparison from './YoYComparison'
-import { useDailyTopDoc } from '../lib/db'
+import { useDailyTopDoc, useTvvDirectory, listDailySalesInMonth } from '../lib/db'
+import { latestDailyDoc } from '../lib/soSanLuongLogic'
 
 const DATA_YEAR = 2026
 const fmtDM = (ymd) => (ymd ? `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}` : '')
@@ -107,13 +108,35 @@ export default function DashboardTab({ data, onNavigate }) {
     return map
   }, [data])
 
-  // Mã Unit theo mã đại lý: tra từ danh sách AG-PE (có sẵn trong data đã lưu,
-  // nên dữ liệu cũ chưa parse lại vẫn hiện được Unit)
+  // ② Mã Unit theo mã đại lý — gộp 3 nguồn theo độ tin cậy: AG-PE (chính
+  // thức) > dữ liệu Daily của tháng đang xem > thư mục TVV dùng chung.
+  // Trước đây chỉ tra AG-PE nên TVV nào thiếu trong AG-PE bị hiện '—' dù
+  // Daily/thư mục có Unit (lỗi Lan báo từ 04/11, chốt sửa 14/11).
+  const { items: tvvDirectory } = useTvvDirectory()
+  const [dailyUnitMap, setDailyUnitMap] = useState({})
+  useEffect(() => {
+    let alive = true
+    if (!activeMonth) { setDailyUnitMap({}); return }
+    listDailySalesInMonth(DATA_YEAR, activeMonth)
+      .then((docs) => {
+        if (!alive) return
+        const d = latestDailyDoc(docs)?.data || {}
+        const map = {}
+        ;[...(d.proposalRows || []), ...(d.pendingRows || []), ...(d.pipelineRows || [])].forEach((r) => {
+          if (r.msdl && r.unit && !map[String(r.msdl)]) map[String(r.msdl)] = r.unit
+        })
+        setDailyUnitMap(map)
+      })
+      .catch(() => { if (alive) setDailyUnitMap({}) })
+    return () => { alive = false }
+  }, [activeMonth])
   const unitByCode = useMemo(() => {
     const map = {}
+    ;(tvvDirectory || []).forEach(a => { if (a.msdl && a.unit) map[String(a.msdl)] = a.unit })
+    Object.entries(dailyUnitMap).forEach(([k, v]) => { if (v) map[k] = v })
     ;(data?.agList || []).forEach(a => { if (a.msddl && a.unit) map[String(a.msddl)] = a.unit })
     return map
-  }, [data])
+  }, [data, tvvDirectory, dailyUnitMap])
 
   const top = useDaily
     ? Object.values(daily.agents || []).slice(0, 60).map(a => ({
