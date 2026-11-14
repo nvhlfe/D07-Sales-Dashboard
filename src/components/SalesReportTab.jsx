@@ -1466,7 +1466,7 @@ export default function SalesReportTab() {
                     {propApplying ? '⏳ Đang áp dụng...' : `✅ Áp dụng ${propTotalActions} thay đổi`}
                   </button>
                   <div style={{ fontSize: 11, color: '#8896aa', marginTop: 8 }}>
-                    Quy tắc đối chiếu: IF → Phát hành (PH); PS → Có phí chưa PH (CP); DC/WD → đưa phí về 0.
+                    Quy tắc đối chiếu: IF → Phát hành (PH); PS → Có phí chưa PH (CP); DC/WD/CF/PO → đưa phí về 0.
                     Proposal ở đúng người nhưng lệch IP Sub → cập nhật phí theo file. Proposal không có trong Sales Report → thêm mới.
                     Pipeline (chưa có ở đâu) → thêm dạng CF (Chưa phí). Sai người đứng tên → chuyển sang TVV đúng theo Proposal.
                   </div>

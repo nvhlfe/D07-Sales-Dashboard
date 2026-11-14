@@ -199,8 +199,9 @@ export function parseTvvRows(rows) {
 // ─────────────────────────────────────────────────────────────
 // ĐỐI CHIẾU PROPOSAL — port nguyên logic bản gốc.
 // Khớp theo ProposalNum (ghi chú) + MSDL/AGCode của từng TVV:
-// - IF → issued (PH), PS → paid (CP), DC/WD → phí về 0 (không đổi status)
+// - IF → issued (PH), PS → paid (CP), DC/WD/CF/PO → phí về 0 (không đổi status)
 // - Thiếu trong Sales Report → thêm mới, phí = IP Sub (triệu) × 1.000.000
+//   (riêng DC/WD/CF/PO → thêm mới với phí 0)
 // - Sai người → chuyển sang đúng người, phí theo IP Sub
 // - Phí lệch > 500đ trên dòng đúng người → sửa theo IP Sub; dòng chỉ có
 //   Pipeline và phí đang 0 → điền theo APE (triệu) × 1.000.000
@@ -212,6 +213,12 @@ export function mapRawStatus(raw) {
   return null
 }
 export function feeFromRow(row) { return Math.round(Number(row?.ipSub || 0) * 1000000) }
+
+// Nhóm trạng thái "chết" — hồ sơ không còn giá trị nên phí luôn 0 ở mọi đường
+// vào (đối soát hồ sơ cũ, thêm mới, chuyển đúng người). Bản gốc chỉ có DC/WD;
+// Lan chốt 14/11/2026 bổ sung CF + PO vì 2 trạng thái này chưa từng có rule.
+export const ZERO_FEE_STATUSES = new Set(['DC', 'WD', 'CF', 'PO'])
+export function isZeroFeeStatus(raw) { return ZERO_FEE_STATUSES.has(String(raw || '').trim().toUpperCase()) }
 
 export function isYearMonth(v) {
   if (v === null || v === undefined || v === '') return false
@@ -312,19 +319,19 @@ export function computeReconcile(reportData, proposalRows, pipelineRows, fallbac
     })
   })
 
-  // 1) Cập nhật trạng thái / phí→0 (DC/WD) / bổ sung PolicyNum
+  // 1) Cập nhật trạng thái / phí→0 (DC/WD/CF/PO) / bổ sung PolicyNum
   const statusActions = []
-  const dcWdNotes = new Set()
+  const zeroFeeNotes = new Set()
   casesByNote.forEach((entries, note) => {
     if (!statusByNote.has(note)) return
     const raw = statusByNote.get(note)
     const mapped = mapRawStatus(raw)
-    if (raw === 'DC' || raw === 'WD') dcWdNotes.add(note)
+    if (isZeroFeeStatus(raw)) zeroFeeNotes.add(note)
     const pnum = policyNumByNote.get(note) || ''
     entries.forEach(({ pi, d, ci, person, item }) => {
       if (mapped && item.status !== mapped) {
         statusActions.push({ pi, d, ci, person, item, note, action: 'status', before: item.status, after: mapped, policyNum: pnum })
-      } else if ((raw === 'DC' || raw === 'WD') && Number(item.fee || 0) !== 0) {
+      } else if (isZeroFeeStatus(raw) && Number(item.fee || 0) !== 0) {
         statusActions.push({ pi, d, ci, person, item, note, action: 'fee', before: item.fee, after: 0 })
       } else if (mapped && pnum && item.policyNum !== pnum) {
         statusActions.push({ pi, d, ci, person, item, note, action: 'policyNum', before: item.policyNum || '', after: item.status, policyNum: pnum })
@@ -344,7 +351,7 @@ export function computeReconcile(reportData, proposalRows, pipelineRows, fallbac
     missingMsdls.forEach((msdl, idx) => {
       const row = agMap.get(msdl)
       const status = mapRawStatus(row.status) || 'none'
-      const fee = feeFromRow(row)
+      const fee = isZeroFeeStatus(row.status) ? 0 : feeFromRow(row)
       if (idx < wrongEntries.length) {
         const w = wrongEntries[idx]
         fixActions.push({
@@ -357,10 +364,10 @@ export function computeReconcile(reportData, proposalRows, pipelineRows, fallbac
     })
   })
 
-  // 2b) Phí sai lệch so với IP Sub trên dòng đã đúng người (bỏ qua DC/WD)
+  // 2b) Phí sai lệch so với IP Sub trên dòng đã đúng người (bỏ qua DC/WD/CF/PO)
   const feeActions = []
   byNote.forEach((agMap, note) => {
-    if (dcWdNotes.has(note)) return
+    if (zeroFeeNotes.has(note)) return
     const entries = casesByNote.get(note) || []
     entries.forEach((e) => {
       const row = agMap.get(String(e.person.msdl))
