@@ -21,12 +21,16 @@ import {
 // - Thực đạt: 2 nguồn — Sales Report nhập tay (reports/{yyyy-m}, tách
 //   Đã chắc issued/PH vs Tiềm năng) hoặc TVV Hàng Ngày chính thức
 //   (daily_sales_tvv, số lũy kế → delta theo tuần)
-// - Đơn vị: cam kết nhập theo nghìn đồng, số gốc tính bằng đồng →
-//   chia 1000 (UNIT_DIV) để cùng đơn vị
+// - Đơn vị: ManMark tính bằng NGHÌN đồng. Sales Report lưu phí bằng
+//   ĐỒNG → chia 1000 (UNIT_DIV). Daily (daily_sales_tvv) lưu FYP/FYC/
+//   IP/APE bằng TRIỆU đồng → NHÂN 1000 (TRIEU_TO_NGHIN). Trộn 2 cơ số
+//   này là lỗi trừ sai Lan phát hiện 17/11/2026 (bản cũ chia cả số Daily
+//   cho 1000 khiến thực đạt theo Daily sụt ~1000 lần).
 // - Dự báo 3 kịch bản + tỷ lệ chuyển đổi lịch sử + z-score cảnh báo
 // ─────────────────────────────────────────────────────────────
 
 const UNIT_DIV = 1000
+const TRIEU_TO_NGHIN = 1000 // Daily lưu triệu đồng → nghìn đồng
 const CONV_MIN_PERSONAL = 5
 const CONV_MIN_UNIT = 15
 const CONV_DEFAULT_RATE = 0.5
@@ -82,7 +86,7 @@ function officialActualsForCode(official, code, weeks) {
     const day = parseInt(dateStr.slice(8, 10))
     const a = official.agents[dateStr]?.[code]
     const cur = a
-      ? { fyp: num(a.fyp) / UNIT_DIV, fyc: num(a.fyc) / UNIT_DIV, caseNet: num(a.caseNet), ipNet: num(a.ipNet) / UNIT_DIV }
+      ? { fyp: num(a.fyp) * TRIEU_TO_NGHIN, fyc: num(a.fyc) * TRIEU_TO_NGHIN, caseNet: num(a.caseNet), ipNet: num(a.ipNet) * TRIEU_TO_NGHIN }
       : prev
     const wIdx = weeks.findIndex((w) => day >= w.start && day <= w.end)
     if (wIdx !== -1) {
@@ -99,7 +103,7 @@ function officialActualsForCode(official, code, weeks) {
 function officialLatestForCode(official, code) {
   for (let i = official.dates.length - 1; i >= 0; i--) {
     const a = official.agents[official.dates[i]]?.[code]
-    if (a) return { fyp: num(a.fyp) / UNIT_DIV, fyc: num(a.fyc) / UNIT_DIV, caseNet: num(a.caseNet), ipNet: num(a.ipNet) / UNIT_DIV }
+    if (a) return { fyp: num(a.fyp) * TRIEU_TO_NGHIN, fyc: num(a.fyc) * TRIEU_TO_NGHIN, caseNet: num(a.caseNet), ipNet: num(a.ipNet) * TRIEU_TO_NGHIN }
   }
   return { fyp: 0, fyc: 0, caseNet: 0, ipNet: 0 }
 }
@@ -117,7 +121,7 @@ function officialAgentInfoForCode(official, code) {
 function pendingValueByCode(official, statuses, code) {
   const norm = (r) => ({
     proposalNum: r.proposalNum, productName: r.product,
-    ape: num(r.ape) / UNIT_DIV, proposalDate: r.proposalDate, msdl: r.msdl,
+    ape: num(r.ape) * TRIEU_TO_NGHIN, proposalDate: r.proposalDate, msdl: r.msdl,
   })
   const mine = (rows) => rows
     .map(normalizeAgent)
@@ -369,7 +373,7 @@ export default function ManMarkTab() {
       commits: m.commits || {},
       notes: m.notes || {},
       excluded: m.excluded || {},
-      dataSource: m.dataSource === 'salesreport' ? 'salesreport' : 'official', // ③ mặc định lấy thực đạt từ Daily chính thức (Lan chốt 14/11)
+      dataSource: m.dataSource === 'official' ? 'official' : 'salesreport', // mặc định Sales Report (nhập tay) — cơ số Lan vẫn dùng; Daily chỉ khi đã chọn và lưu
       weeksSeeded: m.weeksSeeded,
     }
   }, [mmRaw, year, month])
