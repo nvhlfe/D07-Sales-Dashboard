@@ -75,3 +75,62 @@ export function buildCommitTracking(rows, { weeks = [], todayDay = 999 } = {}) {
     },
   }
 }
+
+// ─────────────────────────────────────────────────────────────────
+// 📅 PHÂN TÍCH THEO TUẦN (Lan yêu cầu 17/11/2026: "phân tích hàng
+// tuần cho chính xác") — chấm từng TVV theo CAM KẾT CỦA TUẦN được
+// chọn, kèm lũy kế cam kết/thực đạt từ đầu tháng tới hết tuần đó để
+// thấy ai đang bám cam kết, ai đang trễ lũy kế bao nhiêu.
+//  - ĐẠT TUẦN: CK tuần > 0 và TĐ tuần ≥ CK tuần.
+//  - CHƯA ĐẠT TUẦN: CK tuần > 0 và TĐ tuần < CK tuần.
+//  - CHƯA CÓ CAM KẾT TUẦN: CK tuần = 0 (có thực đạt vẫn liệt kê riêng).
+//  - weekState: 'qua' (đã kết thúc) | 'dang' (đang diễn ra) | 'toi'
+//    (chưa tới), theo todayDay của tháng đang xem.
+// ─────────────────────────────────────────────────────────────────
+export function buildWeeklyTracking(rows, { weeks = [], weekIdx = 0, todayDay = 999 } = {}) {
+  const w = (weeks || [])[weekIdx] || { start: 0, end: 0, label: '' }
+  const weekState = todayDay > w.end ? 'qua' : todayDay >= w.start ? 'dang' : 'toi'
+  const groups = { chuaDat: [], daDat: [], chuaCo: [] }
+
+  ;(rows || []).forEach((r) => {
+    const wks = r.weeks || []
+    const ck = num(wks[weekIdx]?.ckfyp)
+    const td = num(wks[weekIdx]?.tdfyp)
+    let cumCk = 0, cumTd = 0
+    for (let i = 0; i <= weekIdx && i < wks.length; i++) {
+      cumCk += num(wks[i]?.ckfyp); cumTd += num(wks[i]?.tdfyp)
+    }
+    const item = {
+      code: r.code, name: r.name || '', unit: r.unit || '',
+      ckTuan: ck, tdTuan: td, lechTuan: td - ck,
+      pctTuan: ck > 0 ? Math.round((td / ck) * 1000) / 10 : null,
+      cumCk, cumTd, cumLech: cumTd - cumCk,
+      maxConsecutiveMiss: num(r.maxConsecutiveMiss),
+    }
+    if (ck <= 0) { if (td > 0 || cumTd > 0) groups.chuaCo.push(item); return }
+    if (td >= ck) groups.daDat.push(item)
+    else groups.chuaDat.push(item)
+  })
+
+  groups.chuaDat.sort((a, b) => a.lechTuan - b.lechTuan)
+  groups.daDat.sort((a, b) => (b.pctTuan || 0) - (a.pctTuan || 0))
+  groups.chuaCo.sort((a, b) => b.tdTuan - a.tdTuan)
+
+  return {
+    ...groups, weekIdx, weekState, week: w,
+    stats: {
+      chuaDat: groups.chuaDat.length, daDat: groups.daDat.length, chuaCo: groups.chuaCo.length,
+      tongHutTuan: groups.chuaDat.reduce((s, x) => s - x.lechTuan, 0),
+    },
+  }
+}
+
+/** Chỉ số tuần mặc định: tuần chứa hôm nay; tháng đã qua → tuần cuối. */
+export function defaultWeekIdx(weeks, todayDay) {
+  const ws = weeks || []
+  if (!ws.length) return 0
+  const i = ws.findIndex((w) => todayDay >= w.start && todayDay <= w.end)
+  if (i >= 0) return i
+  if (todayDay > ws[ws.length - 1].end) return ws.length - 1
+  return 0
+}

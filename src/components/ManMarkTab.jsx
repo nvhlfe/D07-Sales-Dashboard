@@ -3,7 +3,7 @@ import {
   useManMark, saveManMark, useReportsDoc, usePendingCases,
   useAuth, getDocOnce, normalizeAgent,
 } from '../lib/db'
-import { buildCommitTracking } from '../lib/commitTracking'
+import { buildCommitTracking, buildWeeklyTracking, defaultWeekIdx } from '../lib/commitTracking'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -339,11 +339,27 @@ function MultiFilter({ options, selected, onToggle }) {
 // ─────────────────────────────────────────────────────────────
 // 🎯 Màn hình THEO DÕI CAM KẾT (Lan yêu cầu 17/11/2026): chỉ hiện
 // TVV chưa đạt / cần đẩy là đạt / đã đạt — thay cho bảng tổng lớn.
-// Chuẩn phân nhóm nằm ở src/lib/commitTracking.js (có ghi trên UI).
+// Hai chế độ: 📅 Theo TUẦN (chấm cam kết từng tuần + lũy kế) và
+// 🗓 Theo THÁNG. Chuẩn phân nhóm ở src/lib/commitTracking.js.
 // ─────────────────────────────────────────────────────────────
-function CommitTrackingPanel({ tracking }) {
+const panelBtn = (bg, color) => ({
+  background: bg, color, border: '1px solid #dbe1ee', borderRadius: 8,
+  padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+})
+
+function CommitTrackingPanel({ tracking, rows, weeks, todayDay }) {
   const [showDaDat, setShowDaDat] = useState(false)
+  const [showDatTuan, setShowDatTuan] = useState(false)
+  const [mode, setMode] = useState('tuan')
+  const [weekIdx, setWeekIdx] = useState(() => defaultWeekIdx(weeks, todayDay))
+  useEffect(() => { setWeekIdx(defaultWeekIdx(weeks, todayDay)) }, [weeks, todayDay])
+  const weekly = useMemo(
+    () => buildWeeklyTracking(rows, { weeks, weekIdx, todayDay }),
+    [rows, weeks, weekIdx, todayDay]
+  )
   const st = tracking.stats
+  const fmtSigned = (n) => `${n > 0 ? '+' : ''}${fmt(n)}`
+
   const Row = ({ it, color }) => (
     <div style={{ border: '1px solid #e3e8f2', borderRadius: 10, padding: '8px 12px', marginBottom: 6, background: '#fff' }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
@@ -374,36 +390,105 @@ function CommitTrackingPanel({ tracking }) {
       {items.length > 50 && <div style={{ fontSize: 11.5, color: '#8896aa' }}>… và {items.length - 50} TVV nữa</div>}
     </div>
   )
+  const WeekRow = ({ it, color }) => (
+    <div style={{ border: '1px solid #e3e8f2', borderRadius: 10, padding: '8px 12px', marginBottom: 6, background: '#fff' }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+        <b style={{ fontSize: 13 }}>{it.name || it.code}</b>
+        <span style={{ color: '#8896aa', fontSize: 11.5 }}>{it.unit || '—'} · {it.code}</span>
+        {it.maxConsecutiveMiss >= 2 && <span style={{ fontSize: 11, fontWeight: 700, color: '#c0243c' }}>⚠️ trễ cam kết {it.maxConsecutiveMiss} tuần</span>}
+      </div>
+      <div style={{ height: 8, background: '#eef1f8', borderRadius: 99, overflow: 'hidden', margin: '6px 0' }}>
+        <div style={{ height: '100%', width: `${Math.min(100, it.pctTuan || 0)}%`, background: color, borderRadius: 99 }} />
+      </div>
+      <div style={{ fontSize: 12, color: '#5a6b87' }}>
+        CK tuần <b>{fmt(it.ckTuan)}</b> · TĐ tuần <b>{fmt(it.tdTuan)}</b> ({it.pctTuan}%)
+        {' '}· <b style={{ color: it.lechTuan >= 0 ? '#0f9d58' : '#c0243c' }}>Lệch {fmtSigned(it.lechTuan)}</b>
+        {' '}· Lũy kế tới tuần này: CK {fmt(it.cumCk)} / TĐ {fmt(it.cumTd)} (<b style={{ color: it.cumLech >= 0 ? '#0f9d58' : '#c0243c' }}>{fmtSigned(it.cumLech)}</b>)
+      </div>
+    </div>
+  )
+
   return (
     <div className="card">
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
-        {[
-          ['🔴 Chưa đạt', st.chuaDat, '#c0243c'],
-          ['🟡 Cần đẩy là đạt', st.canDay, '#b45309'],
-          ['🟢 Đã đạt', st.daDat, '#0f9d58'],
-          ['⚪ Chưa có cam kết', st.chuaCoCamKet, '#8896aa'],
-        ].map(([lbl, n, c]) => (
-          <span key={lbl} style={{ fontSize: 12, fontWeight: 700, color: c, background: '#f4f6fb', borderRadius: 99, padding: '5px 12px' }}>{lbl}: {n}</span>
-        ))}
-        {tracking.weeksLeft > 0 && <span style={{ fontSize: 12, color: '#5a6b87', padding: '5px 0' }}>Còn {tracking.weeksLeft} tuần trong tháng</span>}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+        <button onClick={() => setMode('tuan')} style={panelBtn(mode === 'tuan' ? '#4361ee' : '#f1f3f9', mode === 'tuan' ? '#fff' : '#5b6478')}>📅 Theo tuần</button>
+        <button onClick={() => setMode('thang')} style={panelBtn(mode === 'thang' ? '#4361ee' : '#f1f3f9', mode === 'thang' ? '#fff' : '#5b6478')}>🗓 Theo tháng</button>
+        {mode === 'tuan' && (
+          <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', marginLeft: 6 }}>
+            {weeks.map((w, i) => (
+              <button key={i} onClick={() => setWeekIdx(i)}
+                style={panelBtn(weekIdx === i ? '#7209b7' : '#f1f3f9', weekIdx === i ? '#fff' : '#5b6478')}>
+                {w.label} ({w.start}–{w.end})
+              </button>
+            ))}
+            <span style={{ fontSize: 12, color: '#8896aa', alignSelf: 'center' }}>
+              {weekly.weekState === 'qua' ? '· tuần đã kết thúc' : weekly.weekState === 'dang' ? '· tuần đang diễn ra' : '· tuần chưa tới'}
+            </span>
+          </span>
+        )}
       </div>
-      <Section icon="🔴" title="CHƯA ĐẠT CAM KẾT" color="#c0243c" items={tracking.chuaDat} totalThieu={st.thieuChuaDat} />
-      <Section icon="🟡" title="CẦN ĐẨY LÀ ĐẠT" color="#e6a800" items={tracking.canDay} totalThieu={st.thieuCanDay} />
-      <div style={{ marginBottom: 16 }}>
-        <div onClick={() => setShowDaDat((v) => !v)} style={{ fontSize: 13.5, fontWeight: 800, color: '#0f9d58', cursor: 'pointer', marginBottom: 8 }}>
-          🟢 ĐÃ ĐẠT CAM KẾT — {tracking.daDat.length} TVV {showDaDat ? '▾' : '▸'}
-        </div>
-        {showDaDat && tracking.daDat.map((it) => <Row key={it.code} it={it} color="#0f9d58" />)}
-      </div>
-      {tracking.chuaCoCamKet.length > 0 && (
-        <div style={{ fontSize: 12, color: '#5a6b87', marginBottom: 10 }}>
-          ⚪ <b>Chưa có cam kết</b> ({tracking.chuaCoCamKet.length}): {tracking.chuaCoCamKet.slice(0, 30).map((it) => it.name || it.code).join(', ')}{tracking.chuaCoCamKet.length > 30 ? '…' : ''}
-        </div>
+
+      {mode === 'tuan' ? (
+        <>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#c0243c', background: '#f4f6fb', borderRadius: 99, padding: '5px 12px' }}>🔴 Chưa đạt tuần: {weekly.stats.chuaDat} · hụt {fmt(weekly.stats.tongHutTuan)}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#0f9d58', background: '#f4f6fb', borderRadius: 99, padding: '5px 12px' }}>🟢 Đã đạt tuần: {weekly.stats.daDat}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: '#8896aa', background: '#f4f6fb', borderRadius: 99, padding: '5px 12px' }}>⚪ Chưa có cam kết tuần: {weekly.stats.chuaCo}</span>
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, color: '#c0243c', marginBottom: 8 }}>🔴 CHƯA ĐẠT CAM KẾT {weekly.week.label?.toUpperCase()} — {weekly.chuaDat.length} TVV</div>
+            {weekly.chuaDat.length === 0
+              ? <div style={{ fontSize: 12, color: '#8896aa' }}>Không có TVV nào chưa đạt tuần này. 🎉</div>
+              : weekly.chuaDat.slice(0, 50).map((it) => <WeekRow key={it.code} it={it} color="#c0243c" />)}
+            {weekly.chuaDat.length > 50 && <div style={{ fontSize: 11.5, color: '#8896aa' }}>… và {weekly.chuaDat.length - 50} TVV nữa</div>}
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <div onClick={() => setShowDatTuan((v) => !v)} style={{ fontSize: 13.5, fontWeight: 800, color: '#0f9d58', cursor: 'pointer', marginBottom: 8 }}>
+              🟢 ĐÃ ĐẠT CAM KẾT TUẦN — {weekly.daDat.length} TVV {showDatTuan ? '▾' : '▸'}
+            </div>
+            {showDatTuan && weekly.daDat.map((it) => <WeekRow key={it.code} it={it} color="#0f9d58" />)}
+          </div>
+          {weekly.chuaCo.length > 0 && (
+            <div style={{ fontSize: 12, color: '#5a6b87', marginBottom: 10 }}>
+              ⚪ <b>Chưa có cam kết tuần này</b> ({weekly.chuaCo.length}): {weekly.chuaCo.slice(0, 30).map((it) => `${it.name || it.code}${it.tdTuan > 0 ? ` (TĐ ${fmt(it.tdTuan)})` : ''}`).join(', ')}{weekly.chuaCo.length > 30 ? '…' : ''}
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: '#8896aa', borderTop: '1px dashed #e3e8f2', paddingTop: 8 }}>
+            Chuẩn tính tuần: Đạt = thực đạt của tuần ≥ cam kết của tuần đó. Lũy kế = cộng dồn cam kết/thực đạt từ tuần 1 tới tuần đang chọn — lệch lũy kế âm là đang trễ tiến độ chung. Đơn vị: nghìn đồng.
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+            {[
+              ['🔴 Chưa đạt', st.chuaDat, '#c0243c'],
+              ['🟡 Cần đẩy là đạt', st.canDay, '#b45309'],
+              ['🟢 Đã đạt', st.daDat, '#0f9d58'],
+              ['⚪ Chưa có cam kết', st.chuaCoCamKet, '#8896aa'],
+            ].map(([lbl, n, c]) => (
+              <span key={lbl} style={{ fontSize: 12, fontWeight: 700, color: c, background: '#f4f6fb', borderRadius: 99, padding: '5px 12px' }}>{lbl}: {n}</span>
+            ))}
+            {tracking.weeksLeft > 0 && <span style={{ fontSize: 12, color: '#5a6b87', padding: '5px 0' }}>Còn {tracking.weeksLeft} tuần trong tháng</span>}
+          </div>
+          <Section icon="🔴" title="CHƯA ĐẠT CAM KẾT" color="#c0243c" items={tracking.chuaDat} totalThieu={st.thieuChuaDat} />
+          <Section icon="🟡" title="CẦN ĐẨY LÀ ĐẠT" color="#e6a800" items={tracking.canDay} totalThieu={st.thieuCanDay} />
+          <div style={{ marginBottom: 16 }}>
+            <div onClick={() => setShowDaDat((v) => !v)} style={{ fontSize: 13.5, fontWeight: 800, color: '#0f9d58', cursor: 'pointer', marginBottom: 8 }}>
+              🟢 ĐÃ ĐẠT CAM KẾT — {tracking.daDat.length} TVV {showDaDat ? '▾' : '▸'}
+            </div>
+            {showDaDat && tracking.daDat.map((it) => <Row key={it.code} it={it} color="#0f9d58" />)}
+          </div>
+          {tracking.chuaCoCamKet.length > 0 && (
+            <div style={{ fontSize: 12, color: '#5a6b87', marginBottom: 10 }}>
+              ⚪ <b>Chưa có cam kết</b> ({tracking.chuaCoCamKet.length}): {tracking.chuaCoCamKet.slice(0, 30).map((it) => it.name || it.code).join(', ')}{tracking.chuaCoCamKet.length > 30 ? '…' : ''}
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: '#8896aa', borderTop: '1px dashed #e3e8f2', paddingTop: 8 }}>
+            Chuẩn tính: cam kết = cam kết tháng (chưa đặt thì cộng cam kết các tuần). "Cần đẩy là đạt" = thiếu ≤ 25% cam kết hoặc hồ sơ đang chờ đủ lấp phần thiếu.
+            "Cần mỗi tuần" = phần thiếu ÷ số tuần còn lại. Đơn vị: nghìn đồng.
+          </div>
+        </>
       )}
-      <div style={{ fontSize: 11.5, color: '#8896aa', borderTop: '1px dashed #e3e8f2', paddingTop: 8 }}>
-        Chuẩn tính: cam kết = cam kết tháng (chưa đặt thì cộng cam kết các tuần). "Cần đẩy là đạt" = thiếu ≤ 25% cam kết hoặc hồ sơ đang chờ đủ lấp phần thiếu.
-        "Cần mỗi tuần" = phần thiếu ÷ số tuần còn lại. Đơn vị: nghìn đồng.
-      </div>
     </div>
   )
 }
@@ -793,7 +878,7 @@ export default function ManMarkTab() {
       </div>
 
       {/* ── Theo dõi cam kết (chế độ 🎯) ── */}
-      {viewMode === 'track' && <CommitTrackingPanel tracking={tracking} />}
+      {viewMode === 'track' && <CommitTrackingPanel tracking={tracking} rows={allRows} weeks={weeks} todayDay={todayDay} />}
 
       {/* ── Bảng cam kết tuần ── */}
       <div className="card" style={{ padding: 0, overflow: 'hidden', display: viewMode === 'track' ? 'none' : undefined }}>
