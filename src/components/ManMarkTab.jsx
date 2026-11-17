@@ -3,6 +3,7 @@ import {
   useManMark, saveManMark, useReportsDoc, usePendingCases,
   useAuth, getDocOnce, normalizeAgent,
 } from '../lib/db'
+import { buildCommitTracking } from '../lib/commitTracking'
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -335,6 +336,78 @@ function MultiFilter({ options, selected, onToggle }) {
 // ─────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// 🎯 Màn hình THEO DÕI CAM KẾT (Lan yêu cầu 17/11/2026): chỉ hiện
+// TVV chưa đạt / cần đẩy là đạt / đã đạt — thay cho bảng tổng lớn.
+// Chuẩn phân nhóm nằm ở src/lib/commitTracking.js (có ghi trên UI).
+// ─────────────────────────────────────────────────────────────
+function CommitTrackingPanel({ tracking }) {
+  const [showDaDat, setShowDaDat] = useState(false)
+  const st = tracking.stats
+  const Row = ({ it, color }) => (
+    <div style={{ border: '1px solid #e3e8f2', borderRadius: 10, padding: '8px 12px', marginBottom: 6, background: '#fff' }}>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+        <b style={{ fontSize: 13 }}>{it.name || it.code}</b>
+        <span style={{ color: '#8896aa', fontSize: 11.5 }}>{it.unit || '—'} · {it.code}</span>
+        {it.maxConsecutiveMiss >= 2 && <span style={{ fontSize: 11, fontWeight: 700, color: '#c0243c' }}>⚠️ trễ cam kết {it.maxConsecutiveMiss} tuần</span>}
+        {it.pendingDuLap && <span style={{ fontSize: 11, fontWeight: 700, color: '#0f9d58' }}>✓ Pending đủ lấp phần thiếu</span>}
+      </div>
+      <div style={{ height: 8, background: '#eef1f8', borderRadius: 99, overflow: 'hidden', margin: '6px 0' }}>
+        <div style={{ height: '100%', width: `${Math.min(100, it.pctDat)}%`, background: color, borderRadius: 99 }} />
+      </div>
+      <div style={{ fontSize: 12, color: '#5a6b87' }}>
+        Cam kết <b>{fmt(it.camKet)}</b> · Thực đạt <b>{fmt(it.thucDat)}</b> ({it.pctDat}%)
+        {it.thieu > 0 && <> · <b style={{ color: '#c0243c' }}>Thiếu {fmt(it.thieu)}</b></>}
+        {it.paceTuan != null && <> · Cần mỗi tuần <b style={{ color: '#1a1f5e' }}>{fmt(it.paceTuan)}</b></>}
+        {it.pendingValue > 0 && <> · Đang chờ {fmt(it.pendingValue)} ({it.pendingCount} HS)</>}
+      </div>
+    </div>
+  )
+  const Section = ({ icon, title, color, items, totalThieu }) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 13.5, fontWeight: 800, color, marginBottom: 8 }}>
+        {icon} {title} — {items.length} TVV{totalThieu ? ` · tổng thiếu ${fmt(totalThieu)}` : ''}
+      </div>
+      {items.length === 0
+        ? <div style={{ fontSize: 12, color: '#8896aa' }}>Không có TVV nào ở nhóm này. 🎉</div>
+        : items.slice(0, 50).map((it) => <Row key={it.code} it={it} color={color} />)}
+      {items.length > 50 && <div style={{ fontSize: 11.5, color: '#8896aa' }}>… và {items.length - 50} TVV nữa</div>}
+    </div>
+  )
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+        {[
+          ['🔴 Chưa đạt', st.chuaDat, '#c0243c'],
+          ['🟡 Cần đẩy là đạt', st.canDay, '#b45309'],
+          ['🟢 Đã đạt', st.daDat, '#0f9d58'],
+          ['⚪ Chưa có cam kết', st.chuaCoCamKet, '#8896aa'],
+        ].map(([lbl, n, c]) => (
+          <span key={lbl} style={{ fontSize: 12, fontWeight: 700, color: c, background: '#f4f6fb', borderRadius: 99, padding: '5px 12px' }}>{lbl}: {n}</span>
+        ))}
+        {tracking.weeksLeft > 0 && <span style={{ fontSize: 12, color: '#5a6b87', padding: '5px 0' }}>Còn {tracking.weeksLeft} tuần trong tháng</span>}
+      </div>
+      <Section icon="🔴" title="CHƯA ĐẠT CAM KẾT" color="#c0243c" items={tracking.chuaDat} totalThieu={st.thieuChuaDat} />
+      <Section icon="🟡" title="CẦN ĐẨY LÀ ĐẠT" color="#e6a800" items={tracking.canDay} totalThieu={st.thieuCanDay} />
+      <div style={{ marginBottom: 16 }}>
+        <div onClick={() => setShowDaDat((v) => !v)} style={{ fontSize: 13.5, fontWeight: 800, color: '#0f9d58', cursor: 'pointer', marginBottom: 8 }}>
+          🟢 ĐÃ ĐẠT CAM KẾT — {tracking.daDat.length} TVV {showDaDat ? '▾' : '▸'}
+        </div>
+        {showDaDat && tracking.daDat.map((it) => <Row key={it.code} it={it} color="#0f9d58" />)}
+      </div>
+      {tracking.chuaCoCamKet.length > 0 && (
+        <div style={{ fontSize: 12, color: '#5a6b87', marginBottom: 10 }}>
+          ⚪ <b>Chưa có cam kết</b> ({tracking.chuaCoCamKet.length}): {tracking.chuaCoCamKet.slice(0, 30).map((it) => it.name || it.code).join(', ')}{tracking.chuaCoCamKet.length > 30 ? '…' : ''}
+        </div>
+      )}
+      <div style={{ fontSize: 11.5, color: '#8896aa', borderTop: '1px dashed #e3e8f2', paddingTop: 8 }}>
+        Chuẩn tính: cam kết = cam kết tháng (chưa đặt thì cộng cam kết các tuần). "Cần đẩy là đạt" = thiếu ≤ 25% cam kết hoặc hồ sơ đang chờ đủ lấp phần thiếu.
+        "Cần mỗi tuần" = phần thiếu ÷ số tuần còn lại. Đơn vị: nghìn đồng.
+      </div>
+    </div>
+  )
+}
+
 export default function ManMarkTab() {
   const nowD = new Date()
   const [year, setYear] = useState(nowD.getFullYear())
@@ -355,6 +428,7 @@ export default function ManMarkTab() {
   // UI state
   const [quick, setQuick] = useState('all')
   const [weekSel, setWeekSel] = useState('all')
+  const [viewMode, setViewMode] = useState('table') // 'table' | 'track'
   const [compact, setCompact] = useState(false)
   const [sort, setSort] = useState({ col: 'name', dir: 'asc' })
   const [filters, setFilters] = useState({})
@@ -507,6 +581,11 @@ export default function ManMarkTab() {
   const allRows = useMemo(() => buildRows({
     mm, weeks, reportData, official, statuses, yearly, actualSource, todayDay, curMonth: month,
   }), [mm, weeks, reportData, official, statuses, yearly, actualSource, todayDay, month])
+
+  const tracking = useMemo(
+    () => buildCommitTracking(allRows, { weeks, todayDay }),
+    [allRows, weeks, todayDay]
+  )
 
   const rows = useMemo(() => {
     let out = allRows
@@ -666,6 +745,10 @@ export default function ManMarkTab() {
             <option value="cur">Tuần hiện tại</option>
             {weeks.map((w, wi) => <option key={wi} value={wi}>{w.label} ({w.start}–{w.end})</option>)}
           </select>
+          <span style={{ display: 'inline-flex', gap: 4 }}>
+            <button onClick={() => setViewMode('table')} style={btnStyle(viewMode === 'table' ? '#4361ee' : '#f1f3f9', viewMode === 'table' ? '#fff' : '#5b6478')}>📋 Bảng tổng</button>
+            <button onClick={() => setViewMode('track')} style={btnStyle(viewMode === 'track' ? '#4361ee' : '#f1f3f9', viewMode === 'track' ? '#fff' : '#5b6478')}>🎯 Theo dõi cam kết</button>
+          </span>
           <button onClick={() => setCompact((c) => !c)} title="Thu gọn dòng để xem được nhiều TVV hơn" style={btnStyle('#f1f3f9', '#5b6478')}>
             {compact ? '↕ Rộng' : '↕ Gọn'}
           </button>
@@ -709,8 +792,11 @@ export default function ManMarkTab() {
         ))}
       </div>
 
+      {/* ── Theo dõi cam kết (chế độ 🎯) ── */}
+      {viewMode === 'track' && <CommitTrackingPanel tracking={tracking} />}
+
       {/* ── Bảng cam kết tuần ── */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="card" style={{ padding: 0, overflow: 'hidden', display: viewMode === 'track' ? 'none' : undefined }}>
         <div style={{ overflowX: 'auto' }}>
           {loading ? (
             <div className="loading"><div className="spinner" /><div>Đang tải dữ liệu ManMark…</div></div>
