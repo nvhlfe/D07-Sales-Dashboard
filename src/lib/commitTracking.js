@@ -134,3 +134,107 @@ export function defaultWeekIdx(weeks, todayDay) {
   if (todayDay > ws[ws.length - 1].end) return ws.length - 1
   return 0
 }
+
+// ─────────────────────────────────────────────────────────────────
+// 🔬 PHÂN TÍCH CAM KẾT (Lan yêu cầu 18/11/2026: các màn hình trước
+// chỉ là danh sách số, "vẫn chưa phân tích được gì" và làm dashboard
+// dài, khó xem). Hàm này rút ra KẾT LUẬN từ cùng dữ liệu ManMark:
+//  1) Toàn GA: % đạt hiện tại + dự báo cuối tháng (theo dự báo sẵn
+//     có của từng TVV) + số TVV dự báo trượt cam kết.
+//  2) Phân rã nguyên nhân hụt của nhóm chưa đạt thành 3 kiểu, mỗi
+//     kiểu một cách xử lý khác nhau:
+//       - pendingDuLap: hồ sơ đang chờ đủ lấp phần thiếu → đẩy hồ sơ.
+//       - dungYen: không pending và tuần qua không có thực đạt →
+//         đang đứng yên, cần kích hoạt nộp mới.
+//       - thieuNhip: còn lại → có hoạt động nhưng nhịp chưa đủ.
+//     Kèm số người "khó về đích": tuần tốt nhất đã qua × số tuần còn
+//     lại vẫn không lấp nổi phần thiếu.
+//  3) Theo Unit: unit nào hụt nhiều nhất / đạt tốt nhất.
+//  4) Tuần hiện tại so với tuần trước: số TVV đạt cam kết tuần và
+//     tổng thực đạt tuần (tăng/giảm %).
+//  5) Độ tập trung: 5 TVV hụt nhất chiếm bao nhiêu % tổng hụt.
+// ─────────────────────────────────────────────────────────────────
+export function analyzeCommitments(rows, { weeks = [], todayDay = 999 } = {}) {
+  const ws = weeks || []
+  const curIdx = defaultWeekIdx(ws, todayDay)
+  const lastPassedIdx = (() => {
+    let idx = -1
+    ws.forEach((w, i) => { if (w.end < todayDay) idx = i })
+    return idx >= 0 ? idx : curIdx
+  })()
+  const weeksLeft = ws.filter((w) => w.end >= todayDay).length
+
+  let tongCamKet = 0, tongThucDat = 0, tongDuBao = 0, tongThieu = 0
+  let soCoCamKet = 0, soDuBaoTruot = 0, soKhoVeDich = 0
+  const buckets = {
+    pendingDuLap: { count: 0, thieu: 0 },
+    dungYen: { count: 0, thieu: 0 },
+    thieuNhip: { count: 0, thieu: 0 },
+  }
+  const unitMap = new Map()
+  const thieuList = []
+
+  ;(rows || []).forEach((r) => {
+    const wks = r.weeks || []
+    const sumCk = wks.reduce((s, w) => s + num(w?.ckfyp), 0)
+    const camKet = num(r.monthTarget) > 0 ? num(r.monthTarget) : sumCk
+    const thucDat = num(r.monthActual)
+    const duBao = num(r.forecast)
+    const pendingValue = num(r.pending?.value)
+    const unit = r.unit || '—'
+    if (!unitMap.has(unit)) unitMap.set(unit, { unit, camKet: 0, thucDat: 0, thieu: 0, soTruot: 0, soNguoi: 0 })
+    const u = unitMap.get(unit)
+    u.soNguoi += 1
+    if (camKet <= 0) return
+    soCoCamKet += 1
+    tongCamKet += camKet; tongThucDat += thucDat; tongDuBao += duBao
+    u.camKet += camKet; u.thucDat += thucDat
+    const thieu = Math.max(0, camKet - thucDat)
+    if (thieu <= 0) return
+    tongThieu += thieu
+    u.thieu += thieu; u.soTruot += 1
+    thieuList.push(thieu)
+    if (duBao < camKet) soDuBaoTruot += 1
+    // Phân rã nguyên nhân
+    const tdLastPassed = num(wks[lastPassedIdx]?.tdfyp)
+    if (pendingValue >= thieu) buckets.pendingDuLap.count += 1, buckets.pendingDuLap.thieu += thieu
+    else if (pendingValue === 0 && tdLastPassed === 0) buckets.dungYen.count += 1, buckets.dungYen.thieu += thieu
+    else buckets.thieuNhip.count += 1, buckets.thieuNhip.thieu += thieu
+    // Khó về đích: nhịp tuần tốt nhất đã qua cũng không lấp nổi
+    const passedTds = wks.slice(0, lastPassedIdx + 1).map((w) => num(w?.tdfyp))
+    const bestWeek = passedTds.length ? Math.max(...passedTds) : 0
+    if (weeksLeft > 0 && bestWeek * weeksLeft < thieu) soKhoVeDich += 1
+  })
+
+  const byUnit = [...unitMap.values()]
+    .filter((u) => u.camKet > 0)
+    .map((u) => ({ ...u, pctDat: u.camKet > 0 ? Math.round((u.thucDat / u.camKet) * 1000) / 10 : 0 }))
+    .sort((a, b) => b.thieu - a.thieu)
+
+  // Tuần hiện tại vs tuần trước
+  const weekStat = (idx) => {
+    let dat = 0, tongTd = 0
+    ;(rows || []).forEach((r) => {
+      const ck = num(r.weeks?.[idx]?.ckfyp), td = num(r.weeks?.[idx]?.tdfyp)
+      tongTd += td
+      if (ck > 0 && td >= ck) dat += 1
+    })
+    return { dat, tongTd }
+  }
+  const tuanNay = weekStat(curIdx)
+  const tuanTruoc = curIdx > 0 ? weekStat(curIdx - 1) : null
+
+  thieuList.sort((a, b) => b - a)
+  const top5Thieu = thieuList.slice(0, 5).reduce((s, x) => s + x, 0)
+
+  return {
+    tongCamKet, tongThucDat, tongDuBao, tongThieu,
+    pctDat: tongCamKet > 0 ? Math.round((tongThucDat / tongCamKet) * 1000) / 10 : 0,
+    pctDuBao: tongCamKet > 0 ? Math.round((tongDuBao / tongCamKet) * 1000) / 10 : 0,
+    soCoCamKet, soDuBaoTruot, soKhoVeDich, buckets, byUnit,
+    tuanNay: { idx: curIdx, ...tuanNay },
+    tuanTruoc: tuanTruoc ? { idx: curIdx - 1, ...tuanTruoc } : null,
+    tapTrungTop5Pct: tongThieu > 0 ? Math.round((top5Thieu / tongThieu) * 1000) / 10 : 0,
+    weeksLeft,
+  }
+}
