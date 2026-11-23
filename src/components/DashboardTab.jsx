@@ -274,11 +274,11 @@ export default function DashboardTab({ data, onNavigate }) {
             {activeMonth && <span>T{activeMonth}/{DATA_YEAR}</span>}
           </span>
         </div>
-        <table className="data-table">
+        <div style={{ overflowX: 'auto' }}><table className="data-table">
           <thead>
             <tr>
               <th>#</th>
-              <th>Tên đại lý</th>
+              <th className="sticky-col">Tên đại lý</th>
               {showDash('ma') && <th>Mã</th>}
               {showDash('unit') && <th>Unit</th>}
               {showDash('cap') && <th>Cấp</th>}
@@ -302,7 +302,7 @@ export default function DashboardTab({ data, onNavigate }) {
                   <td>
                     <div className={`rank-num ${i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':'rank-other'}`}>{i+1}</div>
                   </td>
-                  <td style={{ color:'#4361ee', fontWeight:600, fontSize:11.5 }}>{ag.name}</td>
+                  <td className="sticky-col" style={{ color:'#4361ee', fontWeight:600, fontSize:11.5 }}>{ag.name}</td>
                   {showDash('ma') && <td style={{ color:'#8896aa', fontSize:11 }}>{ag.code}</td>}
                   {showDash('unit') && <td><span style={{ background:'#eef2ff', color:'#4361ee', padding:'2px 8px', borderRadius:20, fontSize:10.5, fontWeight:700 }}>{ag.unit || '—'}</span></td>}
                   {showDash('cap') && <td><span className={`level-badge level-${ag.level}`}>{ag.level}</span></td>}
@@ -324,7 +324,7 @@ export default function DashboardTab({ data, onNavigate }) {
               )
             })}
           </tbody>
-        </table>
+        </table></div>
         <div style={{ marginTop:10, fontSize:11.5, color:'#8896aa' }}>
           Top 60 theo FYP · {top.length} đại lý · "FYC cần thêm" = 5 − FYC tháng (đơn vị triệu VND, ngưỡng PE Vàng) · PE hiện tại & TLDTPTT theo file AG-PE gần nhất
           {useDaily
@@ -339,7 +339,7 @@ export default function DashboardTab({ data, onNavigate }) {
           <div className="section-icon">📋</div>
           NET MANPOWER & FYC MỖI VĂN PHÒNG
         </div>
-        <table className="data-table">
+        <div style={{ overflowX: 'auto' }}><table className="data-table">
           <thead>
             <tr>
               <th>Văn phòng</th>
@@ -370,7 +370,7 @@ export default function DashboardTab({ data, onNavigate }) {
               <td className="val-green">{formatNum(k.caseNet)}</td>
             </tr>
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   )

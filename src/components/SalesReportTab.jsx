@@ -991,7 +991,7 @@ export default function SalesReportTab() {
           <ColumnToggle columns={SR1_COLS} visible={sr1Cols} onChange={setSr1Cols} />
         </div>
         <div className="sr-table-wrap">
-          <table className="sr-report-table">
+          <table className={`sr-report-table${showSR1('grp') ? '' : ' no-grp'}${showSR1('msdl') ? '' : ' no-msdl'}`}>
             <thead>
               <tr>
                 <th colSpan={2 + (showSR1('grp') ? 1 : 0) + (showSR1('msdl') ? 1 : 0)} className="sr-col-stt" style={{ position: 'sticky', left: 0, background: '#eef2ff', zIndex: 6, textAlign: 'left', padding: '5px 8px' }}>PHÍ NGÀY</th>
@@ -1666,6 +1666,10 @@ const SR_CSS = `
 .sr-col-grp{position:sticky;left:32px;z-index:5;background:#fff!important;width:76px;min-width:76px}
 .sr-col-msdl{position:sticky;left:108px;z-index:5;background:#fff!important;width:86px;min-width:86px}
 .sr-col-name{position:sticky;left:194px;z-index:5;background:#fff!important;min-width:130px;box-shadow:2px 0 6px rgba(0,0,0,.05)}
+.sr-report-table.no-grp .sr-col-msdl{left:32px}
+.sr-report-table.no-grp .sr-col-name{left:118px}
+.sr-report-table.no-msdl .sr-col-name{left:108px}
+.sr-report-table.no-grp.no-msdl .sr-col-name{left:32px}
 .sr-col-total{background:#eff6ff!important;color:#1d4ed8;font-weight:800;text-align:center;white-space:nowrap}
 .sr-col-nofee{background:#fff1f2!important;color:#be123c;font-weight:800;text-align:center;white-space:nowrap}
 .sr-col-issued{background:#f0fdf4!important;color:#15803d;font-weight:800;text-align:center;white-space:nowrap}

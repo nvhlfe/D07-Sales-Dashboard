@@ -701,7 +701,7 @@ export default function TvvDailyTab() {
                     <thead><tr>
                       {showDT('unit') && <SortTh tab="tvv" k="unit" sort={sort} onSort={onSort}>Unit</SortTh>}
                       {showDT('msdl') && <SortTh tab="tvv" k="msdl" sort={sort} onSort={onSort}>Mã TVV</SortTh>}
-                      <SortTh tab="tvv" k="agName" sort={sort} onSort={onSort}>Tên TVV</SortTh>
+                      <SortTh tab="tvv" k="agName" sort={sort} onSort={onSort} style={{ position: 'sticky', left: 0, zIndex: 3, background: '#f5f7ff' }}>Tên TVV</SortTh>
                       {showDT('agSeg') && <SortTh tab="tvv" k="agSeg" sort={sort} onSort={onSort}>Hạng</SortTh>}
                       {showDT('caseSub') && <SortTh tab="tvv" k="caseSub" sort={sort} onSort={onSort} style={COL.case.th}>Case Sub</SortTh>}
                       <SortTh tab="tvv" k="caseNet" sort={sort} onSort={onSort} style={COL.case.th}>Case Net</SortTh>
@@ -720,7 +720,7 @@ export default function TvvDailyTab() {
                         const base = baseAgents[a.msdl]
                         return (
                           <tr key={a.msdl}>
-                            {showDT('unit') && <td>{a.unit}</td>}{showDT('msdl') && <td>{a.msdl}</td>}<td>{a.agName}</td>
+                            {showDT('unit') && <td>{a.unit}</td>}{showDT('msdl') && <td>{a.msdl}</td>}<td className="sticky-col">{a.agName}</td>
                             {showDT('agSeg') && <td style={SEG_STYLE[a.agSeg] || undefined}>{a.agSeg || ''}</td>}
                             {showDT('caseSub') && <CellDelta cur={a.caseSub} base={base?.caseSub} col="case" />}
                             <CellDelta cur={a.caseNet} base={base?.caseNet} col="case" />

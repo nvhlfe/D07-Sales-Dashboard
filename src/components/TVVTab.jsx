@@ -175,7 +175,7 @@ export default function TVVTab({ data }) {
         <div className="page-sub">Click vào dòng để xem chi tiết · {agList.length} TVV</div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 16 }}>
+      <div className="rgrid-5" style={{ gap: 12, marginBottom: 16 }}>
         <div className="card" style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 11, color: '#8896aa', fontWeight: 600, marginBottom: 4 }}>TỔNG TVV</div>
           <div style={{ fontSize: 28, fontWeight: 800, color: '#4361ee' }}>{agList.length}</div>
@@ -256,7 +256,7 @@ export default function TVVTab({ data }) {
                 Chuẩn tính: Active = IP phát hành ròng trong tháng ≥ {ACTIVE_IP_THRESHOLD}tr (theo Sổ Sản Lượng, đã trừ CF liên tháng).
                 Mỗi TVV chưa Active nằm ở đúng 1 nhóm nguyên nhân — bấm vào nhóm để xem danh sách, xếp theo người sắp qua mốc nhất lên đầu.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+              <div className="rgrid-3" style={{ gap: 10, marginBottom: 12 }}>
                 {DIAG_GROUPS.map((g) => {
                   const list = diag.result.groups[g.id]
                   const quaMoc = g.id === 'ketPending' ? list.filter((x) => x.quaMocNeuThong).length : 0
@@ -359,7 +359,7 @@ export default function TVVTab({ data }) {
             <thead>
               <tr>
                 <th>No.</th>
-                <th>Tên TVV</th>
+                <th className="sticky-col">Tên TVV</th>
                 {show('ma') && <th>Mã ĐL</th>}
                 {show('bmUnit') && <th>BM/Unit</th>}
                 {show('peHienTai') && <SortableTh field="peHienTai" label="PE Hiện tại" sortField={sortField} sortDir={sortDir} onSort={handleSort} />}
@@ -379,7 +379,7 @@ export default function TVVTab({ data }) {
               {sorted.map((ag, i) => (
                 <tr key={i} onClick={() => setSelected(ag)} style={{ cursor: 'pointer' }}>
                   <td style={{ color: '#8896aa' }}>{ag.no}</td>
-                  <td><span className="agent-name-link">{ag.agentName}</span></td>
+                  <td className="sticky-col"><span className="agent-name-link">{ag.agentName}</span></td>
                   {show('ma') && <td style={{ fontSize: 11, color: '#8896aa' }}>{ag.msddl}</td>}
                   {show('bmUnit') && <td style={{ fontSize: 11 }}>{ag.ban}/{ag.unit}</td>}
                   {show('peHienTai') && <td><PEBadge val={ag.peHienTai} /></td>}

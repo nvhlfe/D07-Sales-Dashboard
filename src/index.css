@@ -488,3 +488,27 @@ body {
 }
 .mob-nav-item.active { color: var(--primary); }
 .mob-nav-item .mob-icon { font-size: 18px; }
+
+/* ── GÓI 1 TỐI ƯU MOBILE (Lan duyệt 23/11/2026) ──────────────────
+   Lưới responsive thay cho lưới cột cố định viết inline (CSS thường
+   không ghi đè được style inline): .rgrid-N hiện N cột trên máy tính
+   và tự xếp lại trên điện thoại. */
+.rgrid-5 { display: grid; grid-template-columns: repeat(5, 1fr); }
+.rgrid-4 { display: grid; grid-template-columns: repeat(4, 1fr); }
+.rgrid-3 { display: grid; grid-template-columns: repeat(3, 1fr); }
+
+/* Cột dính trái khi cuộn ngang bảng rộng (giữ cột định danh luôn visible) */
+.sticky-col { position: sticky; left: 0; z-index: 2; background: #fff; box-shadow: 2px 0 5px rgba(26,31,94,0.07); }
+th.sticky-col { z-index: 3; background: #f5f7ff; }
+
+@media (max-width: 768px) {
+  .info-grid { grid-template-columns: repeat(2, 1fr); }
+  .rgrid-5 { grid-template-columns: repeat(2, 1fr); }
+  .rgrid-4 { grid-template-columns: repeat(2, 1fr); }
+  .rgrid-3 { grid-template-columns: 1fr; }
+  /* Ô nhập tối thiểu 16px để iOS không tự phóng to khi bấm vào sửa */
+  input, select, textarea { font-size: 16px !important; }
+  /* Cỡ chạm tối thiểu cho các nút thao tác chính */
+  .btn, .upload-btn { min-height: 38px; }
+  select { min-height: 36px; }
+}

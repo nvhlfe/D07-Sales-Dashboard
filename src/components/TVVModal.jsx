@@ -112,9 +112,7 @@ function MonthlyTable({ monthly }) {
           </div>
 
           {/* Data row */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(5, 1fr)',
+          <div className="rgrid-5" style={{
             gap: 0,
             background: 'white',
           }}>
@@ -239,12 +237,12 @@ export default function TVVModal({ tvv, onClose }) {
 
           {/* === B. MDRT 2027 === */}
           <div className="section-divider">🏆 B. MDRT 2027</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+          <div className="rgrid-3" style={{ gap: 10, marginBottom: 12 }}>
             <IB label="FYP Lũy kế 2026" value={formatNum(tvv.fypYtd)} color="#4361ee" sub="triệu VND" />
             <IB label="FYC 12T vừa qua" value={formatNum(tvv.fyc12m)} color="#f72585" sub="triệu VND" />
             <IB label="TLDTPTT" value={fmtPct(tvv.tldtptt)} color="#7209b7" />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
+          <div className="rgrid-4" style={{ gap: 10, marginBottom: 12 }}>
             <IB label="FYP Cần — ON TRACK Q1" value={formatNum(tvv.mdrt_fypCanMdrt)} color="#ef476f" sub="triệu VND" />
             <IB label="FYP Cần — ON TRACK Q2" value={
               (() => {
@@ -257,7 +255,7 @@ export default function TVVModal({ tvv, onClose }) {
             <IB label="FYP Cần — ON TRACK Q3" value={formatNum(tvv.mdrt_fypCanTot)} color="#ef476f" sub="triệu VND (TOT)" />
             <IB label="MDRT Đã Đạt" value={tvv.mdrt_daDat || '—'} color="#06d6a0" />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 12 }}>
+          <div className="rgrid-3" style={{ gap: 10, marginBottom: 12 }}>
             <div className="info-block">
               <div className="info-block-label">MDRT OT Quý 3</div>
               <OTBadge val={tvv.mdrt_otQ3} />
@@ -277,7 +275,7 @@ export default function TVVModal({ tvv, onClose }) {
               <div style={{ fontSize: 11.5, fontWeight: 700, color: '#4361ee', marginBottom: 8 }}>
                 Chỉ tiêu đạt <MdrtBadge val={tvv.mdrt2027_level} /> năm 2027
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              <div className="rgrid-3" style={{ gap: 10 }}>
                 <IB label="CHỈ TIÊU FYP" value={fmtIp(tvv.mdrt2027_fypChiTieu)} color="#4361ee" />
                 <IB label="CHỈ TIÊU FYC" value={fmtIp(tvv.mdrt2027_fycChiTieu)} color="#f72585" />
                 <IB label="CHỈ TIÊU INCOME" value={fmtIp(tvv.mdrt2027_incomeChiTieu)} color="#06d6a0" />
@@ -287,13 +285,13 @@ export default function TVVModal({ tvv, onClose }) {
 
           {/* === C. PRU ELITE === */}
           <div className="section-divider">💎 C. PRU ELITE</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
+          <div className="rgrid-4" style={{ gap: 10, marginBottom: 12 }}>
             <IB label="PE Hiện tại" value={<PEBadge val={tvv.peHienTai} />} />
             <IB label="PE Dự kiến" value={<PEBadge val={tvv.peDuKien} />} />
             <IB label="Kết quả tạm tính" value={tvv.ketQuaTamTinh || '—'} color="#fb8500" />
             <IB label="FYC 12T vừa qua" value={formatNum(tvv.fyc12m)} color="#4361ee" sub="triệu VND" />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 8 }}>
+          <div className="rgrid-4" style={{ gap: 10, marginBottom: 8 }}>
             <div className="info-block">
               <div className="info-block-label">HĐ Tháng 1</div>
               <ActCheck val={tvv.act1} />
@@ -308,7 +306,7 @@ export default function TVVModal({ tvv, onClose }) {
             </div>
             <IB label="Tổng HĐ 3 tháng" value={formatNum(tvv.tongHd3m)} color="#06d6a0" />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
+          <div className="rgrid-4" style={{ gap: 10, marginBottom: 12 }}>
             <IB label="TLDTPTT" value={fmtPct(tvv.tldtptt)} color="#7209b7" />
             <IB label="FYC Cần thêm (PE)" value={formatNum(tvv.pe_fycCanThem)} color="#ef476f" sub="triệu VND" />
             <IB label="Tháng HĐ cần thêm" value={formatNum(tvv.pe_thangCanThem)} color="#ef476f" />
@@ -317,13 +315,13 @@ export default function TVVModal({ tvv, onClose }) {
 
           {/* === D. THƯỞNG QUÝ CÁ NHÂN === */}
           <div className="section-divider">💰 D. THƯỞNG QUÝ CÁ NHÂN</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 8 }}>
+          <div className="rgrid-4" style={{ gap: 10, marginBottom: 8 }}>
             <IB label="FYC trong quý" value={formatNum(tvv.fyc)} color="#4361ee" sub="triệu VND" />
             <IB label="SYC trong quý" value={formatNum(tvv.syc)} color="#7209b7" sub="triệu VND" />
             <IB label="TLDTPTT" value={fmtPct(tvv.quy_tldtptt)} color="#7209b7" />
             <IB label="Mức Hỗ trợ" value={tvv.mucHoTro != null ? String(tvv.mucHoTro) : '—'} color="#fb8500" />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
+          <div className="rgrid-4" style={{ gap: 10, marginBottom: 12 }}>
             <IB label="Mức Chi trả" value={tvv.mucChiTra != null ? String(tvv.mucChiTra) : '—'} color="#06d6a0" />
             <IB label="Tiền thưởng tạm tính" value={formatNum(tvv.thuongTamTinh)} color="#f72585" sub="triệu VND" />
             <IB label="FYC cần tăng mức" value={formatNum(tvv.fycCanThem)} color="#ef476f" sub="triệu VND" />
@@ -332,13 +330,13 @@ export default function TVVModal({ tvv, onClose }) {
 
           {/* === E. STAR CLUB 2026 === */}
           <div className="section-divider">⭐ E. STAR CLUB 2026</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 8 }}>
+          <div className="rgrid-4" style={{ gap: 10, marginBottom: 8 }}>
             <IB label="HS nộp & phát hành" value={formatNum(tvv.sc_hs)} color="#4361ee" sub="hợp đồng" />
             <IB label="Tổng IP" value={fmtIp(tvv.sc_tongIp)} color="#fb8500" />
             <IB label="TLDTPTT" value={fmtPct(tvv.sc_tldtptt)} color="#7209b7" />
             <IB label="TLDTHĐ" value={fmtPct(tvv.sc_tldthd)} color="#7209b7" />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 12 }}>
+          <div className="rgrid-4" style={{ gap: 10, marginBottom: 12 }}>
             <IB label="SLHĐ còn hiệu lực" value={formatNum(tvv.sc_slhd)} color="#4361ee" />
             <IB label="Tạm thỏa ĐK đạt vé" value={tvv.sc_tamThoa || '—'} color="#06d6a0" />
             <IB label="Số vé tạm đạt" value={formatNum(tvv.sc_soVe)} color="#06d6a0" />

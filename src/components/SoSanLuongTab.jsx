@@ -282,13 +282,13 @@ export default function SoSanLuongTab() {
                 <div style={{ overflowX: 'auto' }}>
                   <table className="data-table">
                     <thead><tr>
-                      <th>Unit</th>{showSosl('leader') && <th>Leader</th>}{showSosl('tvvHd') && <th>TVV có hoạt động</th>}<th>Nộp (HS)</th><th>IP nộp</th>
+                      <th className="sticky-col">Unit</th>{showSosl('leader') && <th>Leader</th>}{showSosl('tvvHd') && <th>TVV có hoạt động</th>}<th>Nộp (HS)</th><th>IP nộp</th>
                       {showSosl('pipeline') && <th>Pipeline</th>}{showSosl('phGop') && <th>PH gộp</th>}{showSosl('cf') && <th>Trừ CF</th>}<th>PHÁT HÀNH RÒNG</th>{showSosl('dangCho') && <th>Đang chờ</th>}{showSosl('tyLe') && <th>Tỷ lệ PH</th>}
                     </tr></thead>
                     <tbody>
                       {so.units.map((u) => (
                         <tr key={u.unit} onClick={() => setView({ level: 'unit', unit: u.unit })} style={{ cursor: 'pointer' }}>
-                          <td><span style={{ background: '#eef2ff', color: '#4361ee', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700 }}>{u.unit}</span></td>
+                          <td className="sticky-col"><span style={{ background: '#eef2ff', color: '#4361ee', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700 }}>{u.unit}</span></td>
                           {showSosl('leader') && <td>{leaderByUnit[u.unit] || '—'}</td>}
                           {showSosl('tvvHd') && <td>{u.agentCount}</td>}
                           <td style={{ fontWeight: 700 }}>{u.metrics.nopN}</td>
@@ -336,12 +336,12 @@ export default function SoSanLuongTab() {
                   <div style={{ overflowX: 'auto' }}>
                     <table className="data-table">
                       <thead><tr>
-                        <th>TVV</th><th>Nộp (HS)</th><th>IP nộp</th>{showSosl('pipeline') && <th>Pipeline</th>}{showSosl('phGop') && <th>PH gộp</th>}{showSosl('cf') && <th>Trừ CF</th>}<th>PHÁT HÀNH RÒNG</th>{showSosl('dangCho') && <th>Đang chờ</th>}{showSosl('tyLe') && <th>Tỷ lệ PH</th>}
+                        <th className="sticky-col">TVV</th><th>Nộp (HS)</th><th>IP nộp</th>{showSosl('pipeline') && <th>Pipeline</th>}{showSosl('phGop') && <th>PH gộp</th>}{showSosl('cf') && <th>Trừ CF</th>}<th>PHÁT HÀNH RÒNG</th>{showSosl('dangCho') && <th>Đang chờ</th>}{showSosl('tyLe') && <th>Tỷ lệ PH</th>}
                       </tr></thead>
                       <tbody>
                         {so.agents.filter((a) => (a.unit || '—') === selUnit.unit).map((a) => (
                           <tr key={a.msdl} onClick={() => setView({ level: 'agent', unit: selUnit.unit, msdl: a.msdl })} style={{ cursor: 'pointer' }}>
-                            <td><strong>{a.name || a.msdl}</strong><div style={{ fontSize: 10, color: '#8896aa' }}>{a.msdl}</div></td>
+                            <td className="sticky-col"><strong>{a.name || a.msdl}</strong><div style={{ fontSize: 10, color: '#8896aa' }}>{a.msdl}</div></td>
                             <td style={{ fontWeight: 700 }}>{a.metrics.nopN}</td>
                             <td>{formatNum(a.metrics.subIp)} tr</td>
                             {showSosl('pipeline') && <td>{a.metrics.pipeN} HS · {formatNum(a.metrics.pipeApe)} tr</td>}

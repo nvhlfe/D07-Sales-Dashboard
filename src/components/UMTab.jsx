@@ -127,7 +127,7 @@ export default function UMTab({ data }) {
       </div>
 
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+      <div className="rgrid-4" style={{ gap: 12, marginBottom: 16 }}>
         <div className="card summary-card">
           <div className="summary-label">TỔNG UM</div>
           <div className="summary-value" style={{ color: '#4361ee' }}>{umList.length}</div>

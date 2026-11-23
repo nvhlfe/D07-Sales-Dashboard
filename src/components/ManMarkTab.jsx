@@ -993,7 +993,7 @@ export default function ManMarkTab() {
                   <th rowSpan="3" style={{ minWidth: 30 }}>STT</th>
                   <th rowSpan="3" className="sortable" onClick={() => toggleSort('unit')}>Unit{arrow('unit')}</th>
                   <th rowSpan="3" className="sortable" onClick={() => toggleSort('code')}>Mã TVV{arrow('code')}</th>
-                  <th rowSpan="3" className="sortable" onClick={() => toggleSort('name')} style={{ minWidth: 140, textAlign: 'left' }}>Tên TVV{arrow('name')}</th>
+                  <th rowSpan="3" className="sortable sticky-col" onClick={() => toggleSort('name')} style={{ minWidth: 140, textAlign: 'left' }}>Tên TVV{arrow('name')}</th>
                   {showMM('segment') && <th rowSpan="3" className="sortable" onClick={() => toggleSort('segment')} style={{ minWidth: 80 }}>AG Segment{arrow('segment')}</th>}
                   <th rowSpan="3" className="sortable" onClick={() => toggleSort('monthTarget')} style={{ minWidth: 80 }}>Cam kết tháng{arrow('monthTarget')}</th>
                   <th rowSpan="3" className="grp-actual sortable" onClick={() => toggleSort('monthActual')} style={{ minWidth: 90 }}>Thực đạt tháng{arrow('monthActual')}</th>
@@ -1042,7 +1042,7 @@ export default function ManMarkTab() {
                     <td>{i + 1}</td>
                     <td>{row.unit}</td>
                     <td>{row.code}</td>
-                    <td style={{ textAlign: 'left', fontWeight: 600 }}>
+                    <td className="sticky-col" style={{ textAlign: 'left', fontWeight: 600 }}>
                       <span className="mm-name-link" onClick={() => setDetailCode(row.code)}>{row.name}</span>
                       {row.isNew && <span className="mm-new-badge">Mới</span>}
                       {row.maxConsecutiveMiss >= 2 && (

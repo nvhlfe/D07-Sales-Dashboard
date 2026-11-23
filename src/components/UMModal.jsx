@@ -60,7 +60,7 @@ export default function UMModal({ um, onClose }) {
 
         <div className="modal-body">
           {/* Basic info */}
-          <div className="info-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 12 }}>
+          <div className="info-grid rgrid-4" style={{ marginBottom: 12 }}>
             <InfoBlock label="Văn phòng / Ban" value={`${um.off} / ${um.bm}`} />
             <InfoBlock label="Unit" value={um.unit} />
             <InfoBlock label="Ngày bổ nhiệm" value={fmtDate(um.appDate)} />
@@ -69,7 +69,7 @@ export default function UMModal({ um, onClose }) {
 
           {/* === PRU CHAMPION === */}
           <div className="section-divider">🏆 PRU CHAMPION</div>
-          <div className="info-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="info-grid">
             <InfoBlock label="PC Hiện tại" value={<PCBadge val={um.pcHienTai} />} />
             <InfoBlock label="PC Tạm đạt" value={<PCBadge val={um.pcTamDat} />} />
             <InfoBlock label="PC Dự kiến" value={<PCBadge val={um.pcDuKien} />} />
@@ -80,7 +80,7 @@ export default function UMModal({ um, onClose }) {
 
           {/* === THƯỞNG QUÝ NHÓM === */}
           <div className="section-divider">💰 THƯỞNG QUÝ NHÓM</div>
-          <div className="info-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          <div className="info-grid rgrid-4">
             <InfoBlock label="Tổng FYC" value={formatNum(um.tongFyc)} color="#4361ee" sub="triệu VND" />
             <InfoBlock label="Tổng TVV Hoạt động" value={formatNum(um.tongTvvAct)} color="#06d6a0" />
             <InfoBlock label="TLDTPTT" value={fmtPct(um.tldtptt)} color="#7209b7" />
@@ -93,7 +93,7 @@ export default function UMModal({ um, onClose }) {
 
           {/* === UM MOC — DUY TRÌ UM === */}
           <div className="section-divider">🔐 UM MOC — DUY TRÌ CHỨC DANH UM</div>
-          <div className="info-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="info-grid">
             <InfoBlock label="FYC Phòng TT 6 tháng" value={formatNum(um.moc_fyc6thang)} color="#4361ee" sub="triệu VND (≥20tr)" />
             <InfoBlock label="Lượt TVV Có HĐ" value={formatNum(um.moc_luotTvvAct)} color="#06d6a0" sub="(≥6 lượt)" />
             <InfoBlock label="Lượt TVV Mới CL" value={formatNum(um.moc_tvvMoiCl)} color="#f72585" sub="(*2 lượt)" />
@@ -101,7 +101,7 @@ export default function UMModal({ um, onClose }) {
             <InfoBlock label="TLDTPTT" value={fmtPct(um.moc_tldtptt)} color="#7209b7" sub="(≥80%)" />
             <InfoBlock label="Tạm Đạt Duy Trì" value={<CheckMark val={um.moc_tamDat} />} />
           </div>
-          <div className="info-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="info-grid">
             <InfoBlock label="FYC Cần Thêm (duy trì)" value={formatNum(um.moc_fycCanThem)} color="#ef476f" />
             <InfoBlock label="Lượt ACT Cần Thêm" value={formatNum(um.moc_luotCanThem)} color="#ef476f" />
             <InfoBlock label="TLDTPTT Cần Thêm" value={um.moc_tldtCanThem || '—'} color="#ef476f" />
@@ -109,7 +109,7 @@ export default function UMModal({ um, onClose }) {
 
           {/* === TVVMCL === */}
           <div className="section-divider">👥 TVVMCL</div>
-          <div className="info-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="info-grid">
             <InfoBlock label="TVVMCL Trực tiếp" value={formatNum(um.tvvmcl)} color="#4361ee" />
             <InfoBlock label="50% TVVMCL GEN1" value={formatNum(um.tvvmclGen1)} color="#7209b7" />
             <InfoBlock label="Tổng TVVMCL GEN1" value={formatNum(um.tongTvvmclGen1)} color="#06d6a0" />
@@ -117,7 +117,7 @@ export default function UMModal({ um, onClose }) {
 
           {/* === STAR CLUB NHÓM === */}
           <div className="section-divider">⭐ STAR CLUB NHÓM</div>
-          <div className="info-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          <div className="info-grid rgrid-4">
             <InfoBlock label="Lượt TVV HĐ TB" value={formatNum(um.luotTvvHdTb)} color="#4361ee" />
             <InfoBlock label="Tổng IP" value={um.tongIp ? Number(um.tongIp).toLocaleString('vi-VN') : '—'} color="#fb8500" />
             <InfoBlock label="Tạm Thỏa Điều Kiện" value={um.tamThoaDK ? '✓ Có' : '—'} color="#06d6a0" />
