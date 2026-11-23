@@ -14,8 +14,22 @@ const DASH_TOP_COLS = [
   { key: 'ma', label: 'Mã' },
   { key: 'unit', label: 'Unit' },
   { key: 'cap', label: 'Cấp' },
+  { key: 'pe', label: 'PE hiện tại' },
   { key: 'fycCanThem', label: 'FYC cần thêm' },
+  { key: 'tldtptt', label: 'TLDTPTT' },
 ]
+
+// Badge danh hiệu PE (màu như tab TVV)
+function TopPEBadge({ val }) {
+  if (!val) return <span style={{ color: '#ccc' }}>—</span>
+  const v = String(val).toUpperCase()
+  let bg, color
+  if (v.includes('KIM CƯƠNG')) { bg = '#e3f2fd'; color = '#1e88e5' }
+  else if (v.includes('BẠCH KIM')) { bg = '#e8f5e9'; color = '#43a047' }
+  else if (v.includes('VÀNG') || v.includes('VANG')) { bg = '#fff3cd'; color = '#7a5c00' }
+  else { bg = '#f0f4ff'; color = '#4361ee' }
+  return <span style={{ background: bg, color, padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700 }}>{val}</span>
+}
 
 const DATA_YEAR = 2026
 const fmtDM = (ymd) => (ymd ? `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}` : '')
@@ -149,6 +163,15 @@ export default function DashboardTab({ data, onNavigate }) {
     return map
   }, [data, tvvDirectory, dailyUnitMap])
 
+  // PE hiện tại + TLDTPTT tra từ AG-PE theo mã (Lan yêu cầu 23/11/2026)
+  const peByCode = useMemo(() => {
+    const map = {}
+    ;(data?.agList || []).forEach(a => {
+      if (a.msddl) map[String(a.msddl)] = { pe: a.peHienTai || '', tldtptt: a.tldtptt }
+    })
+    return map
+  }, [data])
+
   const top = useDaily
     ? Object.values(daily.agents || []).slice(0, 60).map(a => ({
         code: a.code, name: a.name, level: a.level || levelByCode[a.code] || '—',
@@ -259,9 +282,11 @@ export default function DashboardTab({ data, onNavigate }) {
               {showDash('ma') && <th>Mã</th>}
               {showDash('unit') && <th>Unit</th>}
               {showDash('cap') && <th>Cấp</th>}
+              {showDash('pe') && <th>PE hiện tại</th>}
               <th>FYP</th>
               <th>FYC</th>
               {showDash('fycCanThem') && <th>FYC cần thêm</th>}
+              {showDash('tldtptt') && <th>TLDTPTT</th>}
               <th>IP NET</th>
             </tr>
           </thead>
@@ -281,11 +306,17 @@ export default function DashboardTab({ data, onNavigate }) {
                   {showDash('ma') && <td style={{ color:'#8896aa', fontSize:11 }}>{ag.code}</td>}
                   {showDash('unit') && <td><span style={{ background:'#eef2ff', color:'#4361ee', padding:'2px 8px', borderRadius:20, fontSize:10.5, fontWeight:700 }}>{ag.unit || '—'}</span></td>}
                   {showDash('cap') && <td><span className={`level-badge level-${ag.level}`}>{ag.level}</span></td>}
+                  {showDash('pe') && <td><TopPEBadge val={peByCode[String(ag.code)]?.pe} /></td>}
                   <td className="val-fyp">{formatNum(ag.fyp)}</td>
                   <td className="val-fyc">{formatNum2(ag.fyc)}</td>
                   {showDash('fycCanThem') && (
                     <td style={{ color: fycGap != null && fycGap > 0 ? '#ef4444' : '#8896aa', fontWeight: fycGap != null && fycGap > 0 ? 700 : 400 }}>
                       {fycGap != null && fycGap > 0 ? formatNum2(fycGap) : '-'}
+                    </td>
+                  )}
+                  {showDash('tldtptt') && (
+                    <td style={{ color: '#7209b7', fontWeight: 600 }}>
+                      {(() => { const t = peByCode[String(ag.code)]?.tldtptt; return t != null && !isNaN(Number(t)) ? `${Number(t).toFixed(1)}%` : '—' })()}
                     </td>
                   )}
                   <td style={{ color:'#fb8500', fontWeight:600 }}>{formatNum(ag.ipNet)}</td>
@@ -295,7 +326,7 @@ export default function DashboardTab({ data, onNavigate }) {
           </tbody>
         </table>
         <div style={{ marginTop:10, fontSize:11.5, color:'#8896aa' }}>
-          Top 60 theo FYP · {top.length} đại lý · "FYC cần thêm" = 5 − FYC tháng (đơn vị triệu VND, ngưỡng PE Vàng)
+          Top 60 theo FYP · {top.length} đại lý · "FYC cần thêm" = 5 − FYC tháng (đơn vị triệu VND, ngưỡng PE Vàng) · PE hiện tại & TLDTPTT theo file AG-PE gần nhất
           {useDaily
             ? <> · Nguồn: file Daily Sales ngày {fmtDM(daily.date)} (nhập ở tab TVV Hàng Ngày), chỉ liệt kê đại lý đã phát sinh số liệu</>
             : <> · Nguồn: file Excel tháng</>}
