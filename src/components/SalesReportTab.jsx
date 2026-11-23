@@ -9,6 +9,7 @@ import {
   fmtVnd, daysInMonth, pad2, calcTotal, calcIssued, calcPersonStats, personArrayToMap,
   personMapToArray, createDefaultPerson, nextOrder, mergeReportDataFromSnapshot,
   collectOpenCases, ageChipClass, isAgingCase, mergeTvvDirectory, parseTvvRows,
+  findOrphanCfCases, collectDailyProposalNums,
   mapRawStatus, parseProposalPipelineExcel, normalizeProposalRow, computeReconcile,
   findOrCreatePerson, dayFromProposalDate, buildSummaryExportAoa,
   buildOverviewExportAoa, buildTonExportAoa,
@@ -220,7 +221,7 @@ export default function SalesReportTab() {
   const nowD = new Date()
   const [year, setYear] = useState(nowD.getFullYear())
   const [month, setMonth] = useState(nowD.getMonth() + 1)
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, isSuperAdmin } = useAuth()
   // ④ Xuất ảnh PNG bảng Tổng hợp để gửi Zalo
   const summaryCardRef = useRef(null)
   const [exportingImg, setExportingImg] = useState(false)
@@ -850,16 +851,64 @@ export default function SalesReportTab() {
   }
 
   // ══════════ Tab Chờ xử lý ══════════
-  const pendingRows = useMemo(
-    () => collectOpenCases(persons, year, month, pendingFilter === 'all' ? null : pendingFilter, nowMs),
+  const [pendingSort, setPendingSort] = useState('age')
+  const pendingRows = useMemo(() => {
+    const rows = collectOpenCases(persons, year, month, pendingFilter === 'all' ? null : pendingFilter, nowMs)
+    if (pendingSort === 'name') rows.sort((a, b) => (a.person.name || '').localeCompare(b.person.name || '', 'vi') || b.ageHours - a.ageHours)
+    else if (pendingSort === 'fee') rows.sort((a, b) => (Number(b.item.fee || 0) - Number(a.item.fee || 0)) || b.ageHours - a.ageHours)
+    return rows
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [version, year, month, pendingFilter, nowMs]
-  )
+  }, [version, year, month, pendingFilter, nowMs, pendingSort])
   const markIssuedFromPending = (r) => {
     updateCaseStatus(r.person, r.d, r.ci, 'issued')
   }
   const deleteFromPending = (r) => {
     deleteCase(r.person, r.d, r.ci)
+  }
+
+  // ══════════ Dọn HS CF không phí, không còn trong Daily Sales ══════════
+  const [cfScan, setCfScan] = useState(null)
+  const scanOrphanCf = async () => {
+    if (!requireEdit()) return
+    setCfScan({ loading: true })
+    try {
+      const docs = await listDailySalesInMonth(year, month)
+      if (!docs.length) {
+        setCfScan({ error: `Chưa có dữ liệu Daily Sales tháng ${month}/${year} — không có căn cứ đối chiếu nên chưa dọn được.` })
+        return
+      }
+      const sorted = [...docs].sort((a, b) => String(a.id).localeCompare(String(b.id)))
+      const latest = sorted[sorted.length - 1]
+      const nums = collectDailyProposalNums(latest.data)
+      setCfScan({ rows: findOrphanCfCases(persons, nums), dailyDate: latest.id, dailyCount: nums.size })
+    } catch (e) {
+      setCfScan({ error: 'Lỗi tải Daily Sales: ' + (e?.code || e?.message || 'không rõ') })
+    }
+  }
+  const applyOrphanCfCleanup = () => {
+    if (!cfScan?.rows?.length) return
+    const byPerson = new Map()
+    cfScan.rows.forEach((r) => {
+      if (!byPerson.has(r.person)) byPerson.set(r.person, [])
+      byPerson.get(r.person).push(r)
+    })
+    let n = 0
+    byPerson.forEach((rows, person) => {
+      const byDay = new Map()
+      rows.forEach((r) => {
+        if (!byDay.has(r.d)) byDay.set(r.d, [])
+        byDay.get(r.d).push(r.ci)
+      })
+      byDay.forEach((cis, d) => {
+        cis.sort((a, b) => b - a).forEach((ci) => {
+          if (person.daily[d]?.cases?.[ci]) { person.daily[d].cases.splice(ci, 1); n++ }
+        })
+      })
+      queuePersonSave(person)
+    })
+    audit('cleanup_cf', `Dọn ${n} HS CF không phí, không có trong Daily ${cfScan.dailyDate} (tháng ${month}/${year})`)
+    bump()
+    setCfScan({ done: n, dailyDate: cfScan.dailyDate })
   }
 
   // ══════════ Tổng hợp: sắp xếp riêng ══════════
@@ -1267,15 +1316,72 @@ export default function SalesReportTab() {
           <AgingPendingBlock year={year} month={month} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
             <span style={{ fontSize: 12, color: '#5a6b87' }}>
-              Tất cả hồ sơ <b>chưa phát hành</b> trong tháng, xếp theo tuổi hồ sơ lâu nhất trước. Bấm <b>🟢 PH</b> để đánh dấu đã phát hành ngay tại đây.
+              Tất cả hồ sơ <b>chưa phát hành</b> trong tháng (cả CP). Chọn cách sắp xếp ở bên phải. Bấm <b>🟢 PH</b> để đánh dấu đã phát hành ngay tại đây.
             </span>
             <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
               {[['all', 'Tất cả'], ['none', '🔴 Chưa phí (CF)'], ['paid', '🟡 Có phí, chưa PH (CP)']].map(([f, lbl]) => (
                 <button key={f} onClick={() => setPendingFilter(f)}
                   className={`sr-pending-filter-btn ${pendingFilter === f ? 'active' : ''}`}>{lbl}</button>
               ))}
+              <select value={pendingSort} onChange={(e) => setPendingSort(e.target.value)}
+                style={{ fontSize: 12, padding: '5px 6px', borderRadius: 8, border: '1px solid #dbe1ee', background: '#fff', color: '#33415c' }}
+                title="Sắp xếp danh sách hồ sơ chưa PH">
+                <option value="age">↕ Tuổi hồ sơ (lâu nhất trước)</option>
+                <option value="name">↕ Theo TVV (A → Z)</option>
+                <option value="fee">↕ Theo phí (cao → thấp)</option>
+              </select>
+              {isAdmin && (
+                <button onClick={scanOrphanCf} className="sr-pending-filter-btn" title="Tìm các hồ sơ CF không phí và không còn xuất hiện trong Daily Sales tháng này để xoá">
+                  🧹 Dọn HS CF không phí
+                </button>
+              )}
             </span>
           </div>
+          {cfScan && (
+            <div className="card" style={{ marginBottom: 10, border: '1px solid #fecaca', background: '#fff7f7' }}>
+              {cfScan.loading ? (
+                <div style={{ fontSize: 12.5, color: '#5a6b87' }}>Đang đối chiếu với Daily Sales…</div>
+              ) : cfScan.error ? (
+                <div style={{ fontSize: 12.5, color: '#b91c1c' }}>⚠️ {cfScan.error} <button onClick={() => setCfScan(null)} style={{ marginLeft: 8, fontSize: 12 }}>Đóng</button></div>
+              ) : cfScan.done != null ? (
+                <div style={{ fontSize: 12.5, color: '#15803d', fontWeight: 600 }}>
+                  ✓ Đã xoá {cfScan.done} hồ sơ CF không phí (đối chiếu Daily {cfScan.dailyDate}).
+                  <button onClick={() => setCfScan(null)} style={{ marginLeft: 8, fontSize: 12 }}>Đóng</button>
+                </div>
+              ) : cfScan.rows.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: '#15803d', fontWeight: 600 }}>
+                  Không có hồ sơ CF không phí nào ngoài Daily Sales (Daily mới nhất {cfScan.dailyDate}, {cfScan.dailyCount} số HSYC). 🎉
+                  <button onClick={() => setCfScan(null)} style={{ marginLeft: 8, fontSize: 12 }}>Đóng</button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 12.5, color: '#7f1d1d', marginBottom: 6 }}>
+                    Tìm thấy <b>{cfScan.rows.length} hồ sơ CF không phí</b> và <b>không có trong Daily Sales</b> (doc mới nhất {cfScan.dailyDate}, {cfScan.dailyCount} số HSYC).
+                    Xoá là <b>không hoàn tác được</b> — kiểm tra danh sách dưới đây rồi mới bấm xoá:
+                  </div>
+                  <div style={{ maxHeight: 220, overflowY: 'auto', fontSize: 12, marginBottom: 8 }}>
+                    {cfScan.rows.map((r, i) => (
+                      <div key={i} style={{ padding: '3px 0', borderBottom: '1px dashed #f3d2d2' }}>
+                        <b>{r.person.name}</b> · ngày {r.d}/{month}/{year} · {String(r.item.note || '').trim()
+                          ? <>HSYC {maskSensitive(r.item.note, isSuperAdmin)}</>
+                          : <span style={{ color: '#b45309', fontWeight: 700 }}>không có số HSYC</span>}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={applyOrphanCfCleanup}
+                      style={{ background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                      🗑 Xoá {cfScan.rows.length} hồ sơ này
+                    </button>
+                    <button onClick={() => setCfScan(null)}
+                      style={{ background: '#fff', color: '#5b6478', border: '1px solid #dbe1ee', borderRadius: 8, padding: '7px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+                      Huỷ, giữ lại
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
             <ColumnToggle columns={SRP_COLS} visible={srpCols} onChange={setSrpCols} />
           </div>
@@ -1318,9 +1424,9 @@ export default function SalesReportTab() {
                     )}
                     {showSRP('note') && <td>
                       {r.item.policyNum ? (
-                        <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 5, fontSize: 10, fontWeight: 700 }}>📄 {r.item.policyNum}</span>
+                        <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 5, fontSize: 10, fontWeight: 700 }}>📄 {maskSensitive(r.item.policyNum, isSuperAdmin)}</span>
                       ) : r.item.note ? (
-                        <span style={{ fontSize: 11, color: '#5a6b87' }}>{r.item.note}</span>
+                        <span style={{ fontSize: 11, color: '#5a6b87' }}>{maskSensitive(r.item.note, isSuperAdmin)}</span>
                       ) : '—'}
                     </td>}
                     <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>

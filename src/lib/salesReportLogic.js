@@ -469,3 +469,36 @@ export function buildTonExportAoa(rows) {
   })
   return aoa
 }
+
+// ── Dọn HS CF không phí, không còn tồn tại trong Daily Sales (Lan yêu cầu 23/11/2026) ──
+// "Tồn tại trong Daily" = số HSYC (ghi chú/proposalNum của hồ sơ) có mặt trong
+// doc Daily mới nhất của tháng (gộp Proposal + Pending + Pipeline).
+// Điều kiện xoá: status 'none' (CF) + phí 0 + HSYC không có trong Daily.
+// Hồ sơ trống HSYC cũng vào diện dọn (không đối chiếu được) — UI phải liệt kê
+// rõ để người dùng nhìn thấy trước khi xác nhận. dailyNums = null → không dọn gì
+// (không có căn cứ đối chiếu thì không xoá).
+export function collectDailyProposalNums(dailyData) {
+  const set = new Set()
+  ;['proposalRows', 'pendingRows', 'pipelineRows'].forEach((k) => {
+    ;(dailyData?.[k] || []).forEach((r) => { if (r.proposalNum) set.add(String(r.proposalNum).trim()) })
+  })
+  return set
+}
+
+export function findOrphanCfCases(persons, dailyNums) {
+  if (!dailyNums) return []
+  const out = []
+  ;(persons || []).forEach((person) => {
+    Object.keys(person.daily || {}).forEach((dStr) => {
+      const cases = (person.daily[dStr] && person.daily[dStr].cases) || []
+      cases.forEach((item, ci) => {
+        if (item.status !== 'none') return
+        if (Number(item.fee || 0) !== 0) return
+        const note = String(item.note || '').trim()
+        if (note && dailyNums.has(note)) return
+        out.push({ person, d: parseInt(dStr), ci, item })
+      })
+    })
+  })
+  return out.sort((a, b) => (a.person.name || '').localeCompare(b.person.name || '', 'vi') || a.d - b.d || a.ci - b.ci)
+}
