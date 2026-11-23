@@ -37,6 +37,10 @@ export const FIREBASE_CONFIG = {
   appId: "1:820808715064:web:62865b8b03b18b6a670fcd",
 }
 export const ADMIN_EMAIL = 'admin@d07.com'
+// Từ 09/11/2026 tài khoản admin chính chuyển sang admin@prud07.top (cả 2 dashboard
+// dùng chung một Firebase). Nhận diện CẢ HAI email là admin chính — trước đây app cũ
+// chỉ nhận admin@d07.com nên Lan đăng nhập bằng tài khoản mới vẫn bị che số HS.
+export const ADMIN_EMAILS = ['admin@d07.com', 'admin@prud07.top']
 
 // ── Key helpers (chuẩn hóa, luôn có năm) ─────────────────────
 export const yyyyMKey = (year, month) => `${year}-${month}`        // "2026-8"
@@ -547,6 +551,6 @@ export function useAuth() {
   // Tài khoản Firebase chỉ do admin tạo trong Console (app không có đăng ký
   // tự do) nên "đã đăng nhập" = nhân sự được cấp tài khoản. isSuperAdmin
   // giữ lại cho đúng tài khoản gốc khi cần phân biệt sau này.
-  const isSuperAdmin = !!user && user.email === ADMIN_EMAIL
+  const isSuperAdmin = !!user && ADMIN_EMAILS.includes(user.email)
   return { user, isAdmin: !!user, isSuperAdmin, canEdit: !!user, login, logout }
 }
