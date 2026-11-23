@@ -16,6 +16,26 @@ import {
 import html2canvas from 'html2canvas'
 import { analyzeSoSanLuong, groupPendingByReason, maskSensitive } from '../lib/soSanLuongLogic'
 import { formatNum } from '../utils/parseExcel'
+import ColumnToggle, { useVisibleColumns } from './ColumnToggle'
+
+// Cột tùy chọn cho 4 bảng chính của Sales Report (Lan yêu cầu
+// 23/11/2026) — cột định danh (STT/TVV) và cột ngày luôn hiện.
+const SR1_COLS = [
+  { key: 'grp', label: 'Nhóm' }, { key: 'msdl', label: 'MSDL' },
+  { key: 'total', label: 'Tổng phí' }, { key: 'nofee', label: 'Chưa phí' },
+  { key: 'issued', label: 'Phát hành' }, { key: 'paid', label: 'Có phí chưa PH' },
+]
+const SR2_COLS = [
+  { key: 'total', label: 'Tổng' }, { key: 'issued', label: 'PH' },
+  { key: 'paid', label: 'CPF' }, { key: 'nofee', label: 'CF' },
+]
+const SRS_COLS = [
+  { key: 'grpCode', label: 'Mã nhóm' }, { key: 'msdl', label: 'MSDL' }, { key: 'cases', label: 'Hồ sơ' },
+]
+const SRP_COLS = [
+  { key: 'grp', label: 'Nhóm' }, { key: 'msdl', label: 'MSDL' }, { key: 'date', label: 'Ngày nhập' },
+  { key: 'age', label: 'Tuổi hồ sơ' }, { key: 'note', label: 'Số HĐ / Ghi chú' },
+]
 
 // ─────────────────────────────────────────────────────────────
 // Sales Report — port React native từ bản standalone đang chạy
@@ -172,6 +192,10 @@ export default function SalesReportTab() {
 
   // ── UI state ──
   const [tab, setTab] = useState('report')
+  const [sr1Cols, setSr1Cols, showSR1] = useVisibleColumns('d07-sr1-cols', SR1_COLS)
+  const [sr2Cols, setSr2Cols, showSR2] = useVisibleColumns('d07-sr2-cols', SR2_COLS)
+  const [srsCols, setSrsCols, showSRS] = useVisibleColumns('d07-srs-cols', SRS_COLS)
+  const [srpCols, setSrpCols, showSRP] = useVisibleColumns('d07-srp-cols', SRP_COLS)
   const [selectedDay, setSelectedDay] = useState('all')
   const [sortType, setSortType] = useState('default')
   const [summarySort, setSummarySort] = useState({ field: null, dir: 'desc' })
@@ -962,11 +986,15 @@ export default function SalesReportTab() {
       {repLoading && !persons.length ? (
         <div className="loading"><div className="spinner" /><div>Đang tải dữ liệu Sales Report…</div></div>
       ) : tab === 'report' ? (
+        <div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <ColumnToggle columns={SR1_COLS} visible={sr1Cols} onChange={setSr1Cols} />
+        </div>
         <div className="sr-table-wrap">
           <table className="sr-report-table">
             <thead>
               <tr>
-                <th colSpan="4" className="sr-col-stt" style={{ position: 'sticky', left: 0, background: '#eef2ff', zIndex: 6, textAlign: 'left', padding: '5px 8px' }}>PHÍ NGÀY</th>
+                <th colSpan={2 + (showSR1('grp') ? 1 : 0) + (showSR1('msdl') ? 1 : 0)} className="sr-col-stt" style={{ position: 'sticky', left: 0, background: '#eef2ff', zIndex: 6, textAlign: 'left', padding: '5px 8px' }}>PHÍ NGÀY</th>
                 {visibleDays.map((d, i) => (
                   <th key={d} style={{ textAlign: 'center', padding: '3px 2px', background: '#eef2ff' }}>
                     <div style={{ color: '#8896aa', fontSize: 9 }}>N{d}</div>
@@ -975,22 +1003,22 @@ export default function SalesReportTab() {
                     </div>
                   </th>
                 ))}
-                <th colSpan="4" style={{ background: '#eef2ff' }} />
+                <th colSpan={['total', 'nofee', 'issued', 'paid'].filter((k) => showSR1(k)).length} style={{ background: '#eef2ff' }} />
               </tr>
               <tr>
                 <th className="sr-col-stt">#</th>
-                <th className="sr-col-grp">Nhóm</th>
-                <th className="sr-col-msdl">MSDL</th>
+                {showSR1('grp') && <th className="sr-col-grp">Nhóm</th>}
+                {showSR1('msdl') && <th className="sr-col-msdl">MSDL</th>}
                 <th className="sr-col-name" style={{ textAlign: 'left', paddingLeft: 8 }}>Họ tên</th>
                 {visibleDays.map((d) => {
                   const dow = new Date(year, month - 1, d).getDay()
                   const cls = dow === 0 ? 'sr-day-sun' : dow === 6 ? 'sr-day-sat' : ''
                   return <th key={d} className={cls} style={{ textAlign: 'center', minWidth: 68 }}>{d}</th>
                 })}
-                <th className="sr-col-total">Tổng phí</th>
-                <th className="sr-col-nofee">Chưa phí</th>
-                <th className="sr-col-issued">Phát hành</th>
-                <th className="sr-col-paid">Có phí chưa PH</th>
+                {showSR1('total') && <th className="sr-col-total">Tổng phí</th>}
+                {showSR1('nofee') && <th className="sr-col-nofee">Chưa phí</th>}
+                {showSR1('issued') && <th className="sr-col-issued">Phát hành</th>}
+                {showSR1('paid') && <th className="sr-col-paid">Có phí chưa PH</th>}
               </tr>
             </thead>
             <tbody>
@@ -999,7 +1027,7 @@ export default function SalesReportTab() {
                 return (
                   <tr key={person._id}>
                     <td className="sr-col-stt" style={{ textAlign: 'center', fontWeight: 700, color: '#8896aa' }}>{pi + 1}</td>
-                    <td className="sr-col-grp">
+                    {showSR1('grp') && <td className="sr-col-grp">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
                         {isAdmin && (
                           <button onClick={() => deletePerson(person)} title="Xóa"
@@ -1010,13 +1038,13 @@ export default function SalesReportTab() {
                           defaultValue={person.group || ''}
                           onBlur={(e) => updateField(person, 'group', e.target.value)} />
                       </div>
-                    </td>
-                    <td className="sr-col-msdl">
+                    </td>}
+                    {showSR1('msdl') && <td className="sr-col-msdl">
                       <input type="text" className="sr-editable-input" disabled={!isAdmin}
                         key={`m-${person._id}-${person.msdl}`}
                         defaultValue={person.msdl || ''}
                         onBlur={(e) => updateField(person, 'msdl', e.target.value)} />
-                    </td>
+                    </td>}
                     <td className="sr-col-name">
                       <input type="text" className="sr-editable-input" disabled={!isAdmin}
                         style={{ fontWeight: 600 }}
@@ -1029,19 +1057,21 @@ export default function SalesReportTab() {
                         {(person.daily[d]?.cases || []).map((item, ci) => renderCaseCard(person, d, item, ci))}
                       </td>
                     ))}
-                    <td className="sr-col-total">{fmtVnd(s.fee)}</td>
-                    <td className="sr-col-nofee">{fmtVnd(s.noFee)}</td>
-                    <td className="sr-col-issued">{fmtVnd(s.issued)}</td>
-                    <td className="sr-col-paid">{fmtVnd(s.paid)}</td>
+                    {showSR1('total') && <td className="sr-col-total">{fmtVnd(s.fee)}</td>}
+                    {showSR1('nofee') && <td className="sr-col-nofee">{fmtVnd(s.noFee)}</td>}
+                    {showSR1('issued') && <td className="sr-col-issued">{fmtVnd(s.issued)}</td>}
+                    {showSR1('paid') && <td className="sr-col-paid">{fmtVnd(s.paid)}</td>}
                   </tr>
                 )
               })}
             </tbody>
           </table>
         </div>
+        </div>
       ) : tab === 'overview' ? (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
+            <ColumnToggle columns={SR2_COLS} visible={sr2Cols} onChange={setSr2Cols} />
             <button onClick={exportOverviewExcel} style={btnStyle('#fef3c7', '#92400e')}>⬇ Xuất Excel (Overview)</button>
           </div>
           <div className="card" style={{ padding: 0, overflow: 'auto' }}>
@@ -1055,10 +1085,10 @@ export default function SalesReportTab() {
                     const cls = dow === 0 ? 'sr-day-sun' : dow === 6 ? 'sr-day-sat' : ''
                     return <th key={d} className={cls} style={{ textAlign: 'center' }}>{d}</th>
                   })}
-                  <th className="sr-col-total">Tổng</th>
-                  <th className="sr-col-issued">PH</th>
-                  <th className="sr-col-paid">CPF</th>
-                  <th className="sr-col-nofee">CF</th>
+                  {showSR2('total') && <th className="sr-col-total">Tổng</th>}
+                  {showSR2('issued') && <th className="sr-col-issued">PH</th>}
+                  {showSR2('paid') && <th className="sr-col-paid">CPF</th>}
+                  {showSR2('nofee') && <th className="sr-col-nofee">CF</th>}
                 </tr>
               </thead>
               <tbody>
@@ -1087,10 +1117,10 @@ export default function SalesReportTab() {
                           </td>
                         )
                       })}
-                      <td className="sr-col-total">{fmtVnd(s.fee)}</td>
-                      <td className="sr-col-issued">{fmtVnd(s.issued)}</td>
-                      <td className="sr-col-paid">{fmtVnd(s.paid)}</td>
-                      <td className="sr-col-nofee">{fmtVnd(s.noFee)}</td>
+                      {showSR2('total') && <td className="sr-col-total">{fmtVnd(s.fee)}</td>}
+                      {showSR2('issued') && <td className="sr-col-issued">{fmtVnd(s.issued)}</td>}
+                      {showSR2('paid') && <td className="sr-col-paid">{fmtVnd(s.paid)}</td>}
+                      {showSR2('nofee') && <td className="sr-col-nofee">{fmtVnd(s.noFee)}</td>}
                     </tr>
                   )
                 })}
@@ -1100,7 +1130,8 @@ export default function SalesReportTab() {
         </div>
       ) : tab === 'summary' ? (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
+            <ColumnToggle columns={SRS_COLS} visible={srsCols} onChange={setSrsCols} />
             <button onClick={exportSummaryImage} disabled={exportingImg} style={btnStyle('#e0f2fe', '#0369a1')}>
               {exportingImg ? '⏳ Đang tạo ảnh…' : '📸 Xuất ảnh (gửi Zalo)'}
             </button>
@@ -1114,10 +1145,10 @@ export default function SalesReportTab() {
             <thead>
               <tr>
                 <th style={{ textAlign: 'center' }}>STT</th>
-                <th style={{ textAlign: 'center' }}>Mã nhóm</th>
-                <th style={{ textAlign: 'center' }}>MSDL</th>
+                {showSRS('grpCode') && <th style={{ textAlign: 'center' }}>Mã nhóm</th>}
+                {showSRS('msdl') && <th style={{ textAlign: 'center' }}>MSDL</th>}
                 <th style={{ textAlign: 'left', minWidth: 160 }}>Họ tên</th>
-                <th style={{ textAlign: 'center' }}>Hồ sơ</th>
+                {showSRS('cases') && <th style={{ textAlign: 'center' }}>Hồ sơ</th>}
                 <th style={{ textAlign: 'center' }}>Tổng phí</th>
                 {[['issued', 'Phát hành'], ['pending', 'Pending'], ['nofee', 'Chưa phí']].map(([f, lbl]) => (
                   <th key={f} className={`sr-sort-th ${summarySort.field === f ? 'active' : ''}`}
@@ -1131,12 +1162,14 @@ export default function SalesReportTab() {
               {summaryRows.map((r, i) => (
                 <tr key={r.person._id}>
                   <td style={{ textAlign: 'center', color: '#8896aa' }}>{i + 1}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    <span style={{ background: '#f0f4ff', color: '#4361ee', padding: '2px 7px', borderRadius: 5, fontSize: 10.5, fontWeight: 700 }}>{r.person.group}</span>
-                  </td>
-                  <td style={{ textAlign: 'center', color: '#8896aa', fontSize: 10.5 }}>{r.person.msdl}</td>
+                  {showSRS('grpCode') && (
+                    <td style={{ textAlign: 'center' }}>
+                      <span style={{ background: '#f0f4ff', color: '#4361ee', padding: '2px 7px', borderRadius: 5, fontSize: 10.5, fontWeight: 700 }}>{r.person.group}</span>
+                    </td>
+                  )}
+                  {showSRS('msdl') && <td style={{ textAlign: 'center', color: '#8896aa', fontSize: 10.5 }}>{r.person.msdl}</td>}
                   <td style={{ fontWeight: 600 }}>{r.person.name}</td>
-                  <td style={{ textAlign: 'center', fontWeight: 700 }}>{r.cases}</td>
+                  {showSRS('cases') && <td style={{ textAlign: 'center', fontWeight: 700 }}>{r.cases}</td>}
                   <td style={{ textAlign: 'center', color: '#1d4ed8', fontWeight: 700 }}>{fmtVnd(r.fee)}</td>
                   <td style={{ textAlign: 'center', color: '#15803d', fontWeight: 700 }}>{fmtVnd(r.issued)}</td>
                   <td style={{ textAlign: 'center', color: '#a16207', fontWeight: 700 }}>{fmtVnd(r.pending)}</td>
@@ -1144,8 +1177,8 @@ export default function SalesReportTab() {
                 </tr>
               ))}
               <tr style={{ background: '#f0f4ff', fontWeight: 800 }}>
-                <td colSpan="4" style={{ textAlign: 'right', paddingRight: 12, color: '#4361ee' }}>TỔNG</td>
-                <td style={{ textAlign: 'center', color: '#7209b7' }}>{summaryTotals.cases}</td>
+                <td colSpan={2 + (showSRS('grpCode') ? 1 : 0) + (showSRS('msdl') ? 1 : 0)} style={{ textAlign: 'right', paddingRight: 12, color: '#4361ee' }}>TỔNG</td>
+                {showSRS('cases') && <td style={{ textAlign: 'center', color: '#7209b7' }}>{summaryTotals.cases}</td>}
                 <td style={{ textAlign: 'center', color: '#1d4ed8' }}>{fmtVnd(summaryTotals.fee)}</td>
                 <td style={{ textAlign: 'center', color: '#15803d' }}>{fmtVnd(summaryTotals.issued)}</td>
                 <td style={{ textAlign: 'center', color: '#a16207' }}>{fmtVnd(summaryTotals.pending)}</td>
@@ -1171,19 +1204,22 @@ export default function SalesReportTab() {
               ))}
             </span>
           </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+            <ColumnToggle columns={SRP_COLS} visible={srpCols} onChange={setSrpCols} />
+          </div>
           <div className="card" style={{ padding: 0, overflow: 'auto' }}>
             <table className="data-table">
               <thead>
                 <tr>
                   <th style={{ textAlign: 'center' }}>#</th>
                   <th style={{ textAlign: 'left', minWidth: 150 }}>TVV</th>
-                  <th style={{ textAlign: 'center' }}>Nhóm</th>
-                  <th style={{ textAlign: 'center' }}>MSDL</th>
-                  <th style={{ textAlign: 'center' }}>Ngày nhập</th>
+                  {showSRP('grp') && <th style={{ textAlign: 'center' }}>Nhóm</th>}
+                  {showSRP('msdl') && <th style={{ textAlign: 'center' }}>MSDL</th>}
+                  {showSRP('date') && <th style={{ textAlign: 'center' }}>Ngày nhập</th>}
                   <th style={{ textAlign: 'center' }}>Phí (VND)</th>
                   <th style={{ textAlign: 'center' }}>Trạng thái</th>
-                  <th style={{ textAlign: 'center' }}>Tuổi hồ sơ</th>
-                  <th style={{ textAlign: 'left', minWidth: 140 }}>Số HĐ / Ghi chú</th>
+                  {showSRP('age') && <th style={{ textAlign: 'center' }}>Tuổi hồ sơ</th>}
+                  {showSRP('note') && <th style={{ textAlign: 'left', minWidth: 140 }}>Số HĐ / Ghi chú</th>}
                   <th style={{ textAlign: 'center' }}>Thao tác</th>
                 </tr>
               </thead>
@@ -1192,9 +1228,9 @@ export default function SalesReportTab() {
                   <tr key={`${r.person._id}-${r.d}-${r.ci}`}>
                     <td style={{ textAlign: 'center', color: '#8896aa', fontSize: 11 }}>{i + 1}</td>
                     <td style={{ fontWeight: 600 }}>{r.person.name}</td>
-                    <td style={{ textAlign: 'center' }}>{r.person.group}</td>
-                    <td style={{ textAlign: 'center', color: '#8896aa', fontSize: 11 }}>{r.person.msdl}</td>
-                    <td style={{ textAlign: 'center' }}>{r.d}/{month}/{year}</td>
+                    {showSRP('grp') && <td style={{ textAlign: 'center' }}>{r.person.group}</td>}
+                    {showSRP('msdl') && <td style={{ textAlign: 'center', color: '#8896aa', fontSize: 11 }}>{r.person.msdl}</td>}
+                    {showSRP('date') && <td style={{ textAlign: 'center' }}>{r.d}/{month}/{year}</td>}
                     <td style={{ textAlign: 'center', fontWeight: 700, color: r.item.fee > 0 ? '#1d4ed8' : '#be123c' }}>
                       {r.item.fee ? Number(r.item.fee).toLocaleString('vi-VN') : 'Chưa có phí'}
                     </td>
@@ -1203,16 +1239,18 @@ export default function SalesReportTab() {
                         {r.item.status === 'paid' ? '🟡 CP' : '🔴 CF'}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span className={`sr-age-chip ${ageChipClass(r.ageDays)}`}>{r.ageDays} ngày</span>
-                    </td>
-                    <td>
+                    {showSRP('age') && (
+                      <td style={{ textAlign: 'center' }}>
+                        <span className={`sr-age-chip ${ageChipClass(r.ageDays)}`}>{r.ageDays} ngày</span>
+                      </td>
+                    )}
+                    {showSRP('note') && <td>
                       {r.item.policyNum ? (
                         <span style={{ background: '#dcfce7', color: '#15803d', padding: '2px 7px', borderRadius: 5, fontSize: 10, fontWeight: 700 }}>📄 {r.item.policyNum}</span>
                       ) : r.item.note ? (
                         <span style={{ fontSize: 11, color: '#5a6b87' }}>{r.item.note}</span>
                       ) : '—'}
-                    </td>
+                    </td>}
                     <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                       {isAdmin && (
                         <>
@@ -1226,7 +1264,7 @@ export default function SalesReportTab() {
                   </tr>
                 ))}
                 {!pendingRows.length && (
-                  <tr><td colSpan="10" style={{ textAlign: 'center', padding: 28, color: '#8896aa' }}>
+                  <tr><td colSpan={5 + srpCols.length} style={{ textAlign: 'center', padding: 28, color: '#8896aa' }}>
                     🎉 Không còn hồ sơ nào đang chờ xử lý theo bộ lọc này trong tháng {month}/{year}.
                   </td></tr>
                 )}

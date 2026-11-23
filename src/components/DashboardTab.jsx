@@ -6,6 +6,16 @@ import TrendChart from './TrendChart'
 import YoYComparison from './YoYComparison'
 import { useDailyTopDoc, useTvvDirectory, listDailySalesInMonth } from '../lib/db'
 import { latestDailyDoc } from '../lib/soSanLuongLogic'
+import ColumnToggle, { useVisibleColumns } from './ColumnToggle'
+
+// Cột tùy chọn của bảng TOP 60 (Lan yêu cầu 23/11/2026: bảng nhiều cột
+// phải có chọn cột hiển thị) — Tên/FYP/FYC/IP NET luôn hiện.
+const DASH_TOP_COLS = [
+  { key: 'ma', label: 'Mã' },
+  { key: 'unit', label: 'Unit' },
+  { key: 'cap', label: 'Cấp' },
+  { key: 'fycCanThem', label: 'FYC cần thêm' },
+]
 
 const DATA_YEAR = 2026
 const fmtDM = (ymd) => (ymd ? `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}` : '')
@@ -80,6 +90,7 @@ export default function DashboardTab({ data, onNavigate }) {
 
   const [selectedMonth, setSelectedMonth] = useState(null)
   const [srcPref, setSrcPref] = useState('auto') // 'auto' | 'daily' | 'excel'
+  const [dashCols, setDashCols, showDash] = useVisibleColumns('d07-dash-top-cols', DASH_TOP_COLS)
 
   const activeMonth = selectedMonth ?? latestMonth
   const daily       = activeMonth ? dailyOf(activeMonth) : null
@@ -231,6 +242,7 @@ export default function DashboardTab({ data, onNavigate }) {
                 ))}
               </span>
             )}
+            <ColumnToggle columns={DASH_TOP_COLS} visible={dashCols} onChange={setDashCols} />
             {useDaily && (
               <span style={{ background:'#e6faf2', color:'#065f46', padding:'3px 10px', borderRadius:12, fontWeight:700 }}>
                 📡 Daily Sales {fmtDM(daily.date)}
@@ -244,18 +256,18 @@ export default function DashboardTab({ data, onNavigate }) {
             <tr>
               <th>#</th>
               <th>Tên đại lý</th>
-              <th>Mã</th>
-              <th>Unit</th>
-              <th>Cấp</th>
+              {showDash('ma') && <th>Mã</th>}
+              {showDash('unit') && <th>Unit</th>}
+              {showDash('cap') && <th>Cấp</th>}
               <th>FYP</th>
               <th>FYC</th>
-              <th>FYC cần thêm</th>
+              {showDash('fycCanThem') && <th>FYC cần thêm</th>}
               <th>IP NET</th>
             </tr>
           </thead>
           <tbody>
             {top.length === 0 && (
-              <tr><td colSpan={9} style={{ textAlign:'center', color:'#8896aa', padding:18 }}>Chưa có số liệu cho tháng này</td></tr>
+              <tr><td colSpan={5 + dashCols.length} style={{ textAlign:'center', color:'#8896aa', padding:18 }}>Chưa có số liệu cho tháng này</td></tr>
             )}
             {top.map((ag, i) => {
               // FYC cần thêm = 5 - FYC tháng. Nếu FYC ≥ 5, không thiếu nữa → hiện "-"
@@ -266,14 +278,16 @@ export default function DashboardTab({ data, onNavigate }) {
                     <div className={`rank-num ${i===0?'rank-1':i===1?'rank-2':i===2?'rank-3':'rank-other'}`}>{i+1}</div>
                   </td>
                   <td style={{ color:'#4361ee', fontWeight:600, fontSize:11.5 }}>{ag.name}</td>
-                  <td style={{ color:'#8896aa', fontSize:11 }}>{ag.code}</td>
-                  <td><span style={{ background:'#eef2ff', color:'#4361ee', padding:'2px 8px', borderRadius:20, fontSize:10.5, fontWeight:700 }}>{ag.unit || '—'}</span></td>
-                  <td><span className={`level-badge level-${ag.level}`}>{ag.level}</span></td>
+                  {showDash('ma') && <td style={{ color:'#8896aa', fontSize:11 }}>{ag.code}</td>}
+                  {showDash('unit') && <td><span style={{ background:'#eef2ff', color:'#4361ee', padding:'2px 8px', borderRadius:20, fontSize:10.5, fontWeight:700 }}>{ag.unit || '—'}</span></td>}
+                  {showDash('cap') && <td><span className={`level-badge level-${ag.level}`}>{ag.level}</span></td>}
                   <td className="val-fyp">{formatNum(ag.fyp)}</td>
                   <td className="val-fyc">{formatNum2(ag.fyc)}</td>
-                  <td style={{ color: fycGap != null && fycGap > 0 ? '#ef4444' : '#8896aa', fontWeight: fycGap != null && fycGap > 0 ? 700 : 400 }}>
-                    {fycGap != null && fycGap > 0 ? formatNum2(fycGap) : '-'}
-                  </td>
+                  {showDash('fycCanThem') && (
+                    <td style={{ color: fycGap != null && fycGap > 0 ? '#ef4444' : '#8896aa', fontWeight: fycGap != null && fycGap > 0 ? 700 : 400 }}>
+                      {fycGap != null && fycGap > 0 ? formatNum2(fycGap) : '-'}
+                    </td>
+                  )}
                   <td style={{ color:'#fb8500', fontWeight:600 }}>{formatNum(ag.ipNet)}</td>
                 </tr>
               )

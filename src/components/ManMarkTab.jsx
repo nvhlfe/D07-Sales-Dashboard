@@ -4,6 +4,22 @@ import {
   useAuth, getDocOnce, normalizeAgent,
 } from '../lib/db'
 import { buildCommitTracking, buildWeeklyTracking, defaultWeekIdx, analyzeCommitments } from '../lib/commitTracking'
+import ColumnToggle, { useVisibleColumns } from './ColumnToggle'
+
+// Cột tùy chọn của bảng ManMark (Lan yêu cầu 23/11/2026): cột cố định
+// và cột con trong từng tuần — STT/Unit/Mã/Tên/Cam kết tháng/Thực đạt
+// tháng luôn hiện.
+const MM_COLS = [
+  { key: 'segment', label: 'AG Segment' },
+  { key: 'monthDiff', label: 'Chênh lệch tháng' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'forecast', label: 'Dự báo tháng' },
+]
+const MM_WCOLS = [
+  { key: 'ckfyp', label: 'CK FYP' }, { key: 'tdfyp', label: 'TĐ FYP' },
+  { key: 'ckhs', label: 'CK HS' }, { key: 'tdhs', label: 'TĐ HS' },
+  { key: 'diff', label: 'Lệch' }, { key: 'note', label: 'Ghi chú' },
+]
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -595,6 +611,8 @@ export default function ManMarkTab() {
   const [quick, setQuick] = useState('all')
   const [weekSel, setWeekSel] = useState('all')
   const [viewMode, setViewMode] = useState('table') // 'table' | 'track'
+  const [mmCols, setMmCols, showMM] = useVisibleColumns('d07-mm-cols', MM_COLS)
+  const [mmWCols, setMmWCols, showMW] = useVisibleColumns('d07-mm-wcols', MM_WCOLS)
   const [compact, setCompact] = useState(false)
   const [sort, setSort] = useState({ col: 'name', dir: 'asc' })
   const [filters, setFilters] = useState({})
@@ -914,6 +932,8 @@ export default function ManMarkTab() {
           <span style={{ display: 'inline-flex', gap: 4 }}>
             <button onClick={() => setViewMode('table')} style={btnStyle(viewMode === 'table' ? '#4361ee' : '#f1f3f9', viewMode === 'table' ? '#fff' : '#5b6478')}>📋 Bảng tổng</button>
             <button onClick={() => setViewMode('track')} style={btnStyle(viewMode === 'track' ? '#4361ee' : '#f1f3f9', viewMode === 'track' ? '#fff' : '#5b6478')}>🎯 Theo dõi cam kết</button>
+            {viewMode === 'table' && <ColumnToggle columns={MM_COLS} visible={mmCols} onChange={setMmCols} />}
+            {viewMode === 'table' && <ColumnToggle columns={MM_WCOLS} visible={mmWCols} onChange={setMmWCols} />}
           </span>
           <button onClick={() => setCompact((c) => !c)} title="Thu gọn dòng để xem được nhiều TVV hơn" style={btnStyle('#f1f3f9', '#5b6478')}>
             {compact ? '↕ Rộng' : '↕ Gọn'}
@@ -974,19 +994,19 @@ export default function ManMarkTab() {
                   <th rowSpan="3" className="sortable" onClick={() => toggleSort('unit')}>Unit{arrow('unit')}</th>
                   <th rowSpan="3" className="sortable" onClick={() => toggleSort('code')}>Mã TVV{arrow('code')}</th>
                   <th rowSpan="3" className="sortable" onClick={() => toggleSort('name')} style={{ minWidth: 140, textAlign: 'left' }}>Tên TVV{arrow('name')}</th>
-                  <th rowSpan="3" className="sortable" onClick={() => toggleSort('segment')} style={{ minWidth: 80 }}>AG Segment{arrow('segment')}</th>
+                  {showMM('segment') && <th rowSpan="3" className="sortable" onClick={() => toggleSort('segment')} style={{ minWidth: 80 }}>AG Segment{arrow('segment')}</th>}
                   <th rowSpan="3" className="sortable" onClick={() => toggleSort('monthTarget')} style={{ minWidth: 80 }}>Cam kết tháng{arrow('monthTarget')}</th>
                   <th rowSpan="3" className="grp-actual sortable" onClick={() => toggleSort('monthActual')} style={{ minWidth: 90 }}>Thực đạt tháng{arrow('monthActual')}</th>
-                  <th rowSpan="3" className="sortable" onClick={() => toggleSort('monthDiff')} style={{ minWidth: 80 }}>Chênh lệch{arrow('monthDiff')}</th>
-                  <th rowSpan="3" className="grp-pending sortable" onClick={() => toggleSort('pending')} style={{ minWidth: 70 }} title="Tổng APE hồ sơ đang chờ xử lý (chưa PH, chưa rút)">Pending{arrow('pending')}</th>
-                  <th rowSpan="3" className="grp-forecast sortable" onClick={() => toggleSort('forecast')} style={{ minWidth: 90 }} title="Đã chắc + tỷ lệ chuyển đổi lịch sử × (tiềm năng + pending)">Dự báo tháng{arrow('forecast')}</th>
-                  {visWeeks.map(({ w, wi }) => <th key={wi} className="week-head" colSpan="6">{w.label} ({w.start}–{w.end})</th>)}
+                  {showMM('monthDiff') && <th rowSpan="3" className="sortable" onClick={() => toggleSort('monthDiff')} style={{ minWidth: 80 }}>Chênh lệch{arrow('monthDiff')}</th>}
+                  {showMM('pending') && <th rowSpan="3" className="grp-pending sortable" onClick={() => toggleSort('pending')} style={{ minWidth: 70 }} title="Tổng APE hồ sơ đang chờ xử lý (chưa PH, chưa rút)">Pending{arrow('pending')}</th>}
+                  {showMM('forecast') && <th rowSpan="3" className="grp-forecast sortable" onClick={() => toggleSort('forecast')} style={{ minWidth: 90 }} title="Đã chắc + tỷ lệ chuyển đổi lịch sử × (tiềm năng + pending)">Dự báo tháng{arrow('forecast')}</th>}
+                  {visWeeks.map(({ w, wi }) => <th key={wi} className="week-head" colSpan={mmWCols.length}>{w.label} ({w.start}–{w.end})</th>)}
                   {isAdmin && <th rowSpan="3" style={{ minWidth: 34 }}>Xoá</th>}
                 </tr>
                 <tr>
                   {visWeeks.map(({ wi }) => (
                     <React.Fragment key={wi}>
-                      {[['ckfyp', 'CK FYP'], ['tdfyp', 'TĐ FYP'], ['ckhs', 'CK HS'], ['tdhs', 'TĐ HS'], ['diff', 'Lệch'], ['note', 'Ghi chú']].map(([f, lbl]) => {
+                      {[['ckfyp', 'CK FYP'], ['tdfyp', 'TĐ FYP'], ['ckhs', 'CK HS'], ['tdhs', 'TĐ HS'], ['diff', 'Lệch'], ['note', 'Ghi chú']].filter(([f]) => showMW(f)).map(([f, lbl]) => {
                         const id = `w${wi}_${f}`
                         const grp = (f === 'tdfyp' || f === 'tdhs') ? 'grp-actual' : ''
                         return <th key={id} className={`week-head sortable ${grp}`} onClick={() => toggleSort(id)}>{lbl}{arrow(id)}</th>
@@ -998,15 +1018,15 @@ export default function ManMarkTab() {
                   <th><MultiFilter options={unitOptions} selected={filters.unit} onToggle={(o) => toggleMultiFilter('unit', o)} /></th>
                   <th><FilterInput value={filters.code} onChange={(v) => setFilter('code', v)} /></th>
                   <th><FilterInput value={filters.name} onChange={(v) => setFilter('name', v)} /></th>
-                  <th><MultiFilter options={segmentOptions} selected={filters.segment} onToggle={(o) => toggleMultiFilter('segment', o)} /></th>
+                  {showMM('segment') && <th><MultiFilter options={segmentOptions} selected={filters.segment} onToggle={(o) => toggleMultiFilter('segment', o)} /></th>}
                   <th><FilterInput value={filters.monthTarget} onChange={(v) => setFilter('monthTarget', v)} /></th>
                   <th className="grp-actual"><FilterInput value={filters.monthActual} onChange={(v) => setFilter('monthActual', v)} /></th>
-                  <th><FilterInput value={filters.monthDiff} onChange={(v) => setFilter('monthDiff', v)} /></th>
-                  <th className="grp-pending"><FilterInput value={filters.pending} onChange={(v) => setFilter('pending', v)} /></th>
-                  <th className="grp-forecast"><FilterInput value={filters.forecast} onChange={(v) => setFilter('forecast', v)} /></th>
+                  {showMM('monthDiff') && <th><FilterInput value={filters.monthDiff} onChange={(v) => setFilter('monthDiff', v)} /></th>}
+                  {showMM('pending') && <th className="grp-pending"><FilterInput value={filters.pending} onChange={(v) => setFilter('pending', v)} /></th>}
+                  {showMM('forecast') && <th className="grp-forecast"><FilterInput value={filters.forecast} onChange={(v) => setFilter('forecast', v)} /></th>}
                   {visWeeks.map(({ wi }) => (
                     <React.Fragment key={wi}>
-                      {['ckfyp', 'tdfyp', 'ckhs', 'tdhs', 'diff', 'note'].map((f) => {
+                      {['ckfyp', 'tdfyp', 'ckhs', 'tdhs', 'diff', 'note'].filter((f) => showMW(f)).map((f) => {
                         const id = `w${wi}_${f}`
                         const grp = (f === 'tdfyp' || f === 'tdhs') ? 'grp-actual' : ''
                         return <th key={id} className={`week-head ${grp}`}><FilterInput value={filters[id]} onChange={(v) => setFilter(id, v)} /></th>
@@ -1032,7 +1052,7 @@ export default function ManMarkTab() {
                         <span className="mm-warn-badge trend" title={`Tháng gần nhất thấp hơn trung bình cá nhân (z=${row.trend.z.toFixed(1)})`}>📉 Bất thường (z={row.trend.z.toFixed(1)})</span>
                       )}
                     </td>
-                    <td>
+                    {showMM('segment') && <td>
                       {isAdmin ? (
                         <input
                           className="mm-cell" style={{ width: 76, textAlign: 'left' }} placeholder="—"
@@ -1041,7 +1061,7 @@ export default function ManMarkTab() {
                           onBlur={() => commitDraft(`seg:${row.code}`, onSegment(row.code))}
                         />
                       ) : (row.segment || '—')}
-                    </td>
+                    </td>}
                     <td>
                       {isAdmin ? (
                         <input
@@ -1056,14 +1076,18 @@ export default function ManMarkTab() {
                       {fmt(row.monthActual)}
                       <div className="mm-breakdown"><span className="confirmed">{fmt(row.monthConfirmed)} chắc</span> · <span className="potential">{fmt(row.monthPotential)} TN</span></div>
                     </td>
-                    <td className={statusClass(row.monthDiff, 1)} style={{ fontWeight: 700 }}>
-                      {row.monthTarget ? `${row.monthDiff >= 0 ? '+' : ''}${fmt(row.monthDiff)}` : '—'}
-                    </td>
-                    <td className="mm-pending grp-pending">
-                      {fmt(row.pending.value)}
-                      {row.pending.count ? <div className="mm-breakdown">{row.pending.count} hồ sơ</div> : null}
-                    </td>
-                    <td
+                    {showMM('monthDiff') && (
+                      <td className={statusClass(row.monthDiff, 1)} style={{ fontWeight: 700 }}>
+                        {row.monthTarget ? `${row.monthDiff >= 0 ? '+' : ''}${fmt(row.monthDiff)}` : '—'}
+                      </td>
+                    )}
+                    {showMM('pending') && (
+                      <td className="mm-pending grp-pending">
+                        {fmt(row.pending.value)}
+                        {row.pending.count ? <div className="mm-breakdown">{row.pending.count} hồ sơ</div> : null}
+                      </td>
+                    )}
+                    {showMM('forecast') && <td
                       className={`mm-forecast grp-forecast ${statusClass(row.forecast, row.monthTarget)}`}
                       title={row.conv.source === 'personal'
                         ? `Tỷ lệ chuyển đổi cá nhân: ${Math.round(row.conv.rate * 100)}% (${row.conv.sample} hồ sơ lịch sử)`
@@ -1073,12 +1097,12 @@ export default function ManMarkTab() {
                     >
                       {fmt(Math.round(row.forecastMid))}
                       <div className="mm-breakdown">Thấp {fmt(Math.round(row.forecastLow))} · Cao {fmt(Math.round(row.forecastHigh))}</div>
-                    </td>
+                    </td>}
                     {visWeeks.map(({ wi }) => {
                       const wd = row.weeks[wi]
                       return (
                         <React.Fragment key={wi}>
-                          <td>
+                          {showMW('ckfyp') && <td>
                             {isAdmin ? (
                               <input
                                 className="mm-cell" type="number"
@@ -1087,12 +1111,12 @@ export default function ManMarkTab() {
                                 onBlur={() => commitDraft(`w:${row.code}:${wi}:fyp`, onWeekField(row.code, wi, 'fyp'))}
                               />
                             ) : fmt(wd.ckfyp)}
-                          </td>
-                          <td className={`mm-actual grp-actual ${statusClass(wd.tdfyp, wd.ckfyp)}`}>
+                          </td>}
+                          {showMW('tdfyp') && <td className={`mm-actual grp-actual ${statusClass(wd.tdfyp, wd.ckfyp)}`}>
                             {fmt(wd.tdfyp)}
                             {wd.tdfyp ? <div className="mm-breakdown"><span className="confirmed">{fmt(wd.confirmedFyp)}</span>/<span className="potential">{fmt(wd.potentialFyp)}</span></div> : null}
-                          </td>
-                          <td>
+                          </td>}
+                          {showMW('ckhs') && <td>
                             {isAdmin ? (
                               <input
                                 className="mm-cell" type="number"
@@ -1101,12 +1125,12 @@ export default function ManMarkTab() {
                                 onBlur={() => commitDraft(`w:${row.code}:${wi}:hs`, onWeekField(row.code, wi, 'hs'))}
                               />
                             ) : fmt(wd.ckhs)}
-                          </td>
-                          <td className={`mm-actual grp-actual ${statusClass(wd.tdhs, wd.ckhs)}`}>{fmt(wd.tdhs)}</td>
-                          <td style={{ fontWeight: 700, color: wd.ckfyp === 0 && wd.tdfyp === 0 ? '#8896aa' : wd.diff >= 0 ? '#0f9d58' : '#c0243c' }}>
+                          </td>}
+                          {showMW('tdhs') && <td className={`mm-actual grp-actual ${statusClass(wd.tdhs, wd.ckhs)}`}>{fmt(wd.tdhs)}</td>}
+                          {showMW('diff') && <td style={{ fontWeight: 700, color: wd.ckfyp === 0 && wd.tdfyp === 0 ? '#8896aa' : wd.diff >= 0 ? '#0f9d58' : '#c0243c' }}>
                             {wd.ckfyp === 0 && wd.tdfyp === 0 ? '—' : `${wd.diff > 0 ? '+' : ''}${fmt(wd.diff)}`}
-                          </td>
-                          <td>
+                          </td>}
+                          {showMW('note') && <td>
                             {isAdmin ? (
                               <input
                                 className="mm-note" type="text" placeholder="Ghi chú..."
@@ -1115,7 +1139,7 @@ export default function ManMarkTab() {
                                 onBlur={() => commitDraft(`n:${row.code}:${wi}`, onNote(row.code, wi))}
                               />
                             ) : (wd.note || '')}
-                          </td>
+                          </td>}
                         </React.Fragment>
                       )
                     })}
@@ -1137,22 +1161,22 @@ export default function ManMarkTab() {
                 {/* ── TỔNG cuối tháng ── */}
                 {!!rows.length && (
                   <tr style={{ background: '#f8f9ff', fontWeight: 700 }}>
-                    <td colSpan="4" style={{ textAlign: 'left' }}>TỔNG ({rows.length} TVV)</td>
+                    <td colSpan={4 + (showMM('segment') ? 1 : 0)} style={{ textAlign: 'left' }}>TỔNG ({rows.length} TVV)</td>
                     <td>{fmt(totals.monthCommit)}</td>
                     <td>{fmt(totals.monthActual)}</td>
-                    <td>{fmt(totals.monthActual - totals.monthCommit)}</td>
-                    <td>{fmt(totals.pending)}</td>
-                    <td>{fmt(Math.round(totals.forecast))}</td>
+                    {showMM('monthDiff') && <td>{fmt(totals.monthActual - totals.monthCommit)}</td>}
+                    {showMM('pending') && <td>{fmt(totals.pending)}</td>}
+                    {showMM('forecast') && <td>{fmt(Math.round(totals.forecast))}</td>}
                     {visWeeks.map(({ wi }) => {
                       const wt = totals.weekTotals[wi]
                       return (
                         <React.Fragment key={wi}>
-                          <td>{fmt(wt.ckFyp)}</td>
-                          <td>{fmt(wt.tdFyp)}</td>
-                          <td>{fmt(wt.ckHs)}</td>
-                          <td>{fmt(wt.tdHs)}</td>
-                          <td style={{ fontWeight: 700, color: (wt.tdFyp - wt.ckFyp) >= 0 ? '#0f9d58' : '#c0243c' }}>{fmt(wt.tdFyp - wt.ckFyp)}</td>
-                          <td />
+                          {showMW('ckfyp') && <td>{fmt(wt.ckFyp)}</td>}
+                          {showMW('tdfyp') && <td>{fmt(wt.tdFyp)}</td>}
+                          {showMW('ckhs') && <td>{fmt(wt.ckHs)}</td>}
+                          {showMW('tdhs') && <td>{fmt(wt.tdHs)}</td>}
+                          {showMW('diff') && <td style={{ fontWeight: 700, color: (wt.tdFyp - wt.ckFyp) >= 0 ? '#0f9d58' : '#c0243c' }}>{fmt(wt.tdFyp - wt.ckFyp)}</td>}
+                          {showMW('note') && <td />}
                         </React.Fragment>
                       )
                     })}

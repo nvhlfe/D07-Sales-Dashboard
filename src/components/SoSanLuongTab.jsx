@@ -3,6 +3,19 @@ import { collection, getDocs } from 'firebase/firestore'
 import { formatNum, formatNum2 } from '../utils/parseExcel'
 import { getFirebase, listDailySalesInMonth, useAuth } from '../lib/db'
 import { analyzeSoSanLuong, latestDailyDoc, maskSensitive, prevYearMonth } from '../lib/soSanLuongLogic'
+import ColumnToggle, { useVisibleColumns } from './ColumnToggle'
+
+// Cột tùy chọn cho bảng Unit & bảng TVV của Sổ (Lan yêu cầu 23/11/2026)
+// — Unit/Nộp/IP nộp/PHÁT HÀNH RÒNG luôn hiện.
+const SOSL_COLS = [
+  { key: 'leader', label: 'Leader' },
+  { key: 'tvvHd', label: 'TVV có hoạt động' },
+  { key: 'pipeline', label: 'Pipeline' },
+  { key: 'phGop', label: 'PH gộp' },
+  { key: 'cf', label: 'Trừ CF' },
+  { key: 'dangCho', label: 'Đang chờ' },
+  { key: 'tyLe', label: 'Tỷ lệ PH' },
+]
 
 // ─────────────────────────────────────────────────────────────────
 // 📋 SỔ SẢN LƯỢNG — theo ý tưởng dashboard D03, chạy trên dữ liệu
@@ -29,6 +42,7 @@ export default function SoSanLuongTab() {
   const [docs, setDocs] = useState({ cur: [], prev: [] })
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState({ level: 'ga' })
+  const [soslCols, setSoslCols, showSosl] = useVisibleColumns('d07-sosl-cols', SOSL_COLS)
 
   // Danh sách tháng có Daily đã nạp
   useEffect(() => {
@@ -260,28 +274,31 @@ export default function SoSanLuongTab() {
               <div className="section-header">
                 <div className="section-icon">🏢</div>
                 SẢN LƯỢNG THEO UNIT — BẤM VÀO 1 UNIT ĐỂ XEM TVV
+                <span style={{ marginLeft: 'auto' }}>
+                  <ColumnToggle columns={SOSL_COLS} visible={soslCols} onChange={setSoslCols} />
+                </span>
               </div>
               {so.units.length === 0 ? <div className="empty-state">Chưa có Unit nào có hoạt động trong tháng.</div> : (
                 <div style={{ overflowX: 'auto' }}>
                   <table className="data-table">
                     <thead><tr>
-                      <th>Unit</th><th>Leader</th><th>TVV có hoạt động</th><th>Nộp (HS)</th><th>IP nộp</th>
-                      <th>Pipeline</th><th>PH gộp</th><th>Trừ CF</th><th>PHÁT HÀNH RÒNG</th><th>Đang chờ</th><th>Tỷ lệ PH</th>
+                      <th>Unit</th>{showSosl('leader') && <th>Leader</th>}{showSosl('tvvHd') && <th>TVV có hoạt động</th>}<th>Nộp (HS)</th><th>IP nộp</th>
+                      {showSosl('pipeline') && <th>Pipeline</th>}{showSosl('phGop') && <th>PH gộp</th>}{showSosl('cf') && <th>Trừ CF</th>}<th>PHÁT HÀNH RÒNG</th>{showSosl('dangCho') && <th>Đang chờ</th>}{showSosl('tyLe') && <th>Tỷ lệ PH</th>}
                     </tr></thead>
                     <tbody>
                       {so.units.map((u) => (
                         <tr key={u.unit} onClick={() => setView({ level: 'unit', unit: u.unit })} style={{ cursor: 'pointer' }}>
                           <td><span style={{ background: '#eef2ff', color: '#4361ee', padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700 }}>{u.unit}</span></td>
-                          <td>{leaderByUnit[u.unit] || '—'}</td>
-                          <td>{u.agentCount}</td>
+                          {showSosl('leader') && <td>{leaderByUnit[u.unit] || '—'}</td>}
+                          {showSosl('tvvHd') && <td>{u.agentCount}</td>}
                           <td style={{ fontWeight: 700 }}>{u.metrics.nopN}</td>
                           <td>{formatNum(u.metrics.subIp)} tr</td>
-                          <td>{u.metrics.pipeN} HS · {formatNum(u.metrics.pipeApe)} tr</td>
-                          <td>{formatNum(u.metrics.issIp)} tr</td>
-                          <td style={{ color: u.metrics.cfN > 0 ? '#b91c1c' : '#8896aa' }}>{u.metrics.cfN > 0 ? `−${formatNum(u.metrics.cfIp)} tr` : '—'}</td>
+                          {showSosl('pipeline') && <td>{u.metrics.pipeN} HS · {formatNum(u.metrics.pipeApe)} tr</td>}
+                          {showSosl('phGop') && <td>{formatNum(u.metrics.issIp)} tr</td>}
+                          {showSosl('cf') && <td style={{ color: u.metrics.cfN > 0 ? '#b91c1c' : '#8896aa' }}>{u.metrics.cfN > 0 ? `−${formatNum(u.metrics.cfIp)} tr` : '—'}</td>}
                           <td style={{ fontWeight: 800, color: '#065f46' }}>{formatNum(u.metrics.netIp)} tr · {u.metrics.netN} HĐ</td>
-                          <td>{u.metrics.pendN} HS</td>
-                          <td>{u.metrics.rate !== null ? `${(u.metrics.rate * 100).toFixed(0)}%` : '—'}</td>
+                          {showSosl('dangCho') && <td>{u.metrics.pendN} HS</td>}
+                          {showSosl('tyLe') && <td>{u.metrics.rate !== null ? `${(u.metrics.rate * 100).toFixed(0)}%` : '—'}</td>}
                         </tr>
                       ))}
                     </tbody>
@@ -312,11 +329,14 @@ export default function SoSanLuongTab() {
                   <div className="section-header">
                     <div className="section-icon">🧑‍💼</div>
                     TVV CỦA UNIT {selUnit.unit}{leaderByUnit[selUnit.unit] ? ` — LEADER ${leaderByUnit[selUnit.unit]}` : ''} · BẤM VÀO 1 TVV ĐỂ XEM HỒ SƠ
+                    <span style={{ marginLeft: 'auto' }}>
+                      <ColumnToggle columns={SOSL_COLS} visible={soslCols} onChange={setSoslCols} />
+                    </span>
                   </div>
                   <div style={{ overflowX: 'auto' }}>
                     <table className="data-table">
                       <thead><tr>
-                        <th>TVV</th><th>Nộp (HS)</th><th>IP nộp</th><th>Pipeline</th><th>PH gộp</th><th>Trừ CF</th><th>PHÁT HÀNH RÒNG</th><th>Đang chờ</th><th>Tỷ lệ PH</th>
+                        <th>TVV</th><th>Nộp (HS)</th><th>IP nộp</th>{showSosl('pipeline') && <th>Pipeline</th>}{showSosl('phGop') && <th>PH gộp</th>}{showSosl('cf') && <th>Trừ CF</th>}<th>PHÁT HÀNH RÒNG</th>{showSosl('dangCho') && <th>Đang chờ</th>}{showSosl('tyLe') && <th>Tỷ lệ PH</th>}
                       </tr></thead>
                       <tbody>
                         {so.agents.filter((a) => (a.unit || '—') === selUnit.unit).map((a) => (
@@ -324,12 +344,12 @@ export default function SoSanLuongTab() {
                             <td><strong>{a.name || a.msdl}</strong><div style={{ fontSize: 10, color: '#8896aa' }}>{a.msdl}</div></td>
                             <td style={{ fontWeight: 700 }}>{a.metrics.nopN}</td>
                             <td>{formatNum(a.metrics.subIp)} tr</td>
-                            <td>{a.metrics.pipeN} HS · {formatNum(a.metrics.pipeApe)} tr</td>
-                            <td>{formatNum(a.metrics.issIp)} tr</td>
-                            <td style={{ color: a.metrics.cfN > 0 ? '#b91c1c' : '#8896aa' }}>{a.metrics.cfN > 0 ? `−${formatNum(a.metrics.cfIp)} tr` : '—'}</td>
+                            {showSosl('pipeline') && <td>{a.metrics.pipeN} HS · {formatNum(a.metrics.pipeApe)} tr</td>}
+                            {showSosl('phGop') && <td>{formatNum(a.metrics.issIp)} tr</td>}
+                            {showSosl('cf') && <td style={{ color: a.metrics.cfN > 0 ? '#b91c1c' : '#8896aa' }}>{a.metrics.cfN > 0 ? `−${formatNum(a.metrics.cfIp)} tr` : '—'}</td>}
                             <td style={{ fontWeight: 800, color: '#065f46' }}>{formatNum(a.metrics.netIp)} tr · {a.metrics.netN} HĐ</td>
-                            <td>{a.metrics.pendN} HS</td>
-                            <td>{a.metrics.rate !== null ? `${(a.metrics.rate * 100).toFixed(0)}%` : '—'}</td>
+                            {showSosl('dangCho') && <td>{a.metrics.pendN} HS</td>}
+                            {showSosl('tyLe') && <td>{a.metrics.rate !== null ? `${(a.metrics.rate * 100).toFixed(0)}%` : '—'}</td>}
                           </tr>
                         ))}
                       </tbody>

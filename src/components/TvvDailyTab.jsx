@@ -6,6 +6,19 @@
 // ─────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import * as XLSX from 'xlsx'
+import ColumnToggle, { useVisibleColumns } from './ColumnToggle'
+
+// Cột tùy chọn cho 2 bảng tổng hợp của tab TVV Hàng Ngày (Lan yêu cầu 23/11/2026)
+const DAILY_TVV_COLS = [
+  { key: 'unit', label: 'Unit' }, { key: 'msdl', label: 'Mã TVV' }, { key: 'agSeg', label: 'Hạng' },
+  { key: 'caseSub', label: 'Case Sub' }, { key: 'cIF', label: 'Số HS IF' }, { key: 'cPS', label: 'Số HS PS' },
+  { key: 'cOther', label: 'Số HS Khác' }, { key: 'trend', label: 'Xu hướng' },
+]
+const DAILY_LEADER_COLS = [
+  { key: 'leader', label: 'Leader' }, { key: 'manpower', label: 'Số TVV' }, { key: 'caseSub', label: 'Case Sub' },
+  { key: 'apeSub', label: 'APE Sub' }, { key: 'apeNet', label: 'APE Net' },
+  { key: 'cIF', label: 'Số HS IF' }, { key: 'cPS', label: 'Số HS PS' }, { key: 'cOther', label: 'Số HS Khác' },
+]
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { collection, getDocs } from 'firebase/firestore'
 import {
@@ -272,6 +285,8 @@ export default function TvvDailyTab() {
   const [allDates, setAllDates] = useState([])
   const [datesLoading, setDatesLoading] = useState(true)
   const [month, setMonth] = useState('')
+  const [dailyTvvCols, setDailyTvvCols, showDT] = useVisibleColumns('d07-daily-tvv-cols', DAILY_TVV_COLS)
+  const [dailyLeaderCols, setDailyLeaderCols, showDL] = useVisibleColumns('d07-daily-leader-cols', DAILY_LEADER_COLS)
   const [viewDate, setViewDate] = useState('')
   const [baseDate, setBaseDate] = useState('')
 
@@ -675,7 +690,8 @@ export default function TvvDailyTab() {
 
             {activeTab === 'tvv' && (
               <div>
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 10 }}>
+                  <ColumnToggle columns={DAILY_TVV_COLS} visible={dailyTvvCols} onChange={setDailyTvvCols} />
                   <button className="upload-btn" style={{ background: '#fff', color: 'var(--primary)', border: '1px solid var(--primary)', boxShadow: 'none' }} onClick={exportTvvLatest}>
                     ⬇️ Xuất Excel (dữ liệu mới nhất)
                   </button>
@@ -683,40 +699,40 @@ export default function TvvDailyTab() {
                 <div className="data-table-wrap" style={{ overflowX: 'auto' }}>
                   <table className="data-table">
                     <thead><tr>
-                      <SortTh tab="tvv" k="unit" sort={sort} onSort={onSort}>Unit</SortTh>
-                      <SortTh tab="tvv" k="msdl" sort={sort} onSort={onSort}>Mã TVV</SortTh>
+                      {showDT('unit') && <SortTh tab="tvv" k="unit" sort={sort} onSort={onSort}>Unit</SortTh>}
+                      {showDT('msdl') && <SortTh tab="tvv" k="msdl" sort={sort} onSort={onSort}>Mã TVV</SortTh>}
                       <SortTh tab="tvv" k="agName" sort={sort} onSort={onSort}>Tên TVV</SortTh>
-                      <SortTh tab="tvv" k="agSeg" sort={sort} onSort={onSort}>Hạng</SortTh>
-                      <SortTh tab="tvv" k="caseSub" sort={sort} onSort={onSort} style={COL.case.th}>Case Sub</SortTh>
+                      {showDT('agSeg') && <SortTh tab="tvv" k="agSeg" sort={sort} onSort={onSort}>Hạng</SortTh>}
+                      {showDT('caseSub') && <SortTh tab="tvv" k="caseSub" sort={sort} onSort={onSort} style={COL.case.th}>Case Sub</SortTh>}
                       <SortTh tab="tvv" k="caseNet" sort={sort} onSort={onSort} style={COL.case.th}>Case Net</SortTh>
                       <SortTh tab="tvv" k="ipSub" sort={sort} onSort={onSort} style={COL.ip.th}>IP Sub</SortTh>
                       <SortTh tab="tvv" k="ipNet" sort={sort} onSort={onSort} style={COL.ip.th}>IP Net</SortTh>
                       <SortTh tab="tvv" k="fyp" sort={sort} onSort={onSort} style={COL.fyp.th}>FYP</SortTh>
                       <SortTh tab="tvv" k="fyc" sort={sort} onSort={onSort} style={COL.fyp.th}>FYC</SortTh>
-                      <SortTh tab="tvv" k="cIF" sort={sort} onSort={onSort} style={COL.count.th}>Số HS IF</SortTh>
-                      <SortTh tab="tvv" k="cPS" sort={sort} onSort={onSort} style={COL.count.th}>Số HS PS</SortTh>
-                      <SortTh tab="tvv" k="cOther" sort={sort} onSort={onSort} style={COL.count.th}>Số HS Khác</SortTh>
-                      <th>Xu hướng</th>
+                      {showDT('cIF') && <SortTh tab="tvv" k="cIF" sort={sort} onSort={onSort} style={COL.count.th}>Số HS IF</SortTh>}
+                      {showDT('cPS') && <SortTh tab="tvv" k="cPS" sort={sort} onSort={onSort} style={COL.count.th}>Số HS PS</SortTh>}
+                      {showDT('cOther') && <SortTh tab="tvv" k="cOther" sort={sort} onSort={onSort} style={COL.count.th}>Số HS Khác</SortTh>}
+                      {showDT('trend') && <th>Xu hướng</th>}
                     </tr></thead>
                     <tbody>
-                      {!tvvList.length && <EmptyRow colSpan={14} text="Không có dữ liệu — hãy tải file cho ngày này" />}
+                      {!tvvList.length && <EmptyRow colSpan={6 + dailyTvvCols.length} text="Không có dữ liệu — hãy tải file cho ngày này" />}
                       {tvvList.map((a) => {
                         const base = baseAgents[a.msdl]
                         return (
                           <tr key={a.msdl}>
-                            <td>{a.unit}</td><td>{a.msdl}</td><td>{a.agName}</td>
-                            <td style={SEG_STYLE[a.agSeg] || undefined}>{a.agSeg || ''}</td>
-                            <CellDelta cur={a.caseSub} base={base?.caseSub} col="case" />
+                            {showDT('unit') && <td>{a.unit}</td>}{showDT('msdl') && <td>{a.msdl}</td>}<td>{a.agName}</td>
+                            {showDT('agSeg') && <td style={SEG_STYLE[a.agSeg] || undefined}>{a.agSeg || ''}</td>}
+                            {showDT('caseSub') && <CellDelta cur={a.caseSub} base={base?.caseSub} col="case" />}
                             <CellDelta cur={a.caseNet} base={base?.caseNet} col="case" />
                             <CellDelta cur={a.ipSub} base={base?.ipSub} col="ip" />
                             <CellDelta cur={a.ipNet} base={base?.ipNet} col="ip" />
                             <CellDelta cur={a.fyp} base={base?.fyp} col="fyp" />
                             <CellDelta cur={a.fyc} base={base?.fyc} col="fyp" />
-                            <td style={COL.count.td}>{a.cIF}</td>
-                            <td style={COL.count.td}>{a.cPS}</td>
-                            <td style={COL.count.td}>{a.cOther}</td>
-                            <td><button onClick={() => openTrend(a.msdl, a.agName)}
-                              style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 12, color: 'var(--primary)' }}>📈</button></td>
+                            {showDT('cIF') && <td style={COL.count.td}>{a.cIF}</td>}
+                            {showDT('cPS') && <td style={COL.count.td}>{a.cPS}</td>}
+                            {showDT('cOther') && <td style={COL.count.td}>{a.cOther}</td>}
+                            {showDT('trend') && <td><button onClick={() => openTrend(a.msdl, a.agName)}
+                              style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', fontSize: 12, color: 'var(--primary)' }}>📈</button></td>}
                           </tr>
                         )
                       })}
@@ -727,43 +743,48 @@ export default function TvvDailyTab() {
             )}
 
             {activeTab === 'leader' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                  <ColumnToggle columns={DAILY_LEADER_COLS} visible={dailyLeaderCols} onChange={setDailyLeaderCols} />
+                </div>
               <div className="data-table-wrap" style={{ overflowX: 'auto' }}>
                 <table className="data-table">
                   <thead><tr>
                     <SortTh tab="leader" k="unit" sort={sort} onSort={onSort}>Unit</SortTh>
-                    <SortTh tab="leader" k="leaderName" sort={sort} onSort={onSort}>Leader</SortTh>
-                    <SortTh tab="leader" k="manpower" sort={sort} onSort={onSort}>Số TVV</SortTh>
-                    <SortTh tab="leader" k="caseSubUnit" sort={sort} onSort={onSort} style={COL.case.th}>Case Sub</SortTh>
+                    {showDL('leader') && <SortTh tab="leader" k="leaderName" sort={sort} onSort={onSort}>Leader</SortTh>}
+                    {showDL('manpower') && <SortTh tab="leader" k="manpower" sort={sort} onSort={onSort}>Số TVV</SortTh>}
+                    {showDL('caseSub') && <SortTh tab="leader" k="caseSubUnit" sort={sort} onSort={onSort} style={COL.case.th}>Case Sub</SortTh>}
                     <SortTh tab="leader" k="caseNetUnit" sort={sort} onSort={onSort} style={COL.case.th}>Case Net</SortTh>
                     <SortTh tab="leader" k="ipSubUnit" sort={sort} onSort={onSort} style={COL.ip.th}>IP Sub</SortTh>
                     <SortTh tab="leader" k="ipNetUnit" sort={sort} onSort={onSort} style={COL.ip.th}>IP Net</SortTh>
-                    <SortTh tab="leader" k="apeSubUnit" sort={sort} onSort={onSort} style={COL.fyp.th}>APE Sub</SortTh>
-                    <SortTh tab="leader" k="apeNetUnit" sort={sort} onSort={onSort} style={COL.fyp.th}>APE Net</SortTh>
-                    <SortTh tab="leader" k="cIF" sort={sort} onSort={onSort} style={COL.count.th}>Số HS IF</SortTh>
-                    <SortTh tab="leader" k="cPS" sort={sort} onSort={onSort} style={COL.count.th}>Số HS PS</SortTh>
-                    <SortTh tab="leader" k="cOther" sort={sort} onSort={onSort} style={COL.count.th}>Số HS Khác</SortTh>
+                    {showDL('apeSub') && <SortTh tab="leader" k="apeSubUnit" sort={sort} onSort={onSort} style={COL.fyp.th}>APE Sub</SortTh>}
+                    {showDL('apeNet') && <SortTh tab="leader" k="apeNetUnit" sort={sort} onSort={onSort} style={COL.fyp.th}>APE Net</SortTh>}
+                    {showDL('cIF') && <SortTh tab="leader" k="cIF" sort={sort} onSort={onSort} style={COL.count.th}>Số HS IF</SortTh>}
+                    {showDL('cPS') && <SortTh tab="leader" k="cPS" sort={sort} onSort={onSort} style={COL.count.th}>Số HS PS</SortTh>}
+                    {showDL('cOther') && <SortTh tab="leader" k="cOther" sort={sort} onSort={onSort} style={COL.count.th}>Số HS Khác</SortTh>}
                   </tr></thead>
                   <tbody>
-                    {!leaderList.length && <EmptyRow colSpan={12} text="Không có dữ liệu" />}
+                    {!leaderList.length && <EmptyRow colSpan={4 + dailyLeaderCols.length} text="Không có dữ liệu" />}
                     {leaderList.map((u) => {
                       const base = baseUnits[u.unit]
                       return (
                         <tr key={u.unit}>
-                          <td>{u.unit}</td><td>{u.leaderName}</td><td>{u.manpower}</td>
-                          <CellDelta cur={u.caseSubUnit} base={base?.caseSubUnit} col="case" />
+                          <td>{u.unit}</td>{showDL('leader') && <td>{u.leaderName}</td>}{showDL('manpower') && <td>{u.manpower}</td>}
+                          {showDL('caseSub') && <CellDelta cur={u.caseSubUnit} base={base?.caseSubUnit} col="case" />}
                           <CellDelta cur={u.caseNetUnit} base={base?.caseNetUnit} col="case" />
                           <CellDelta cur={u.ipSubUnit} base={base?.ipSubUnit} col="ip" />
                           <CellDelta cur={u.ipNetUnit} base={base?.ipNetUnit} col="ip" />
-                          <CellDelta cur={u.apeSubUnit} base={base?.apeSubUnit} col="fyp" />
-                          <CellDelta cur={u.apeNetUnit} base={base?.apeNetUnit} col="fyp" />
-                          <td style={COL.count.td}>{u.cIF}</td>
-                          <td style={COL.count.td}>{u.cPS}</td>
-                          <td style={COL.count.td}>{u.cOther}</td>
+                          {showDL('apeSub') && <CellDelta cur={u.apeSubUnit} base={base?.apeSubUnit} col="fyp" />}
+                          {showDL('apeNet') && <CellDelta cur={u.apeNetUnit} base={base?.apeNetUnit} col="fyp" />}
+                          {showDL('cIF') && <td style={COL.count.td}>{u.cIF}</td>}
+                          {showDL('cPS') && <td style={COL.count.td}>{u.cPS}</td>}
+                          {showDL('cOther') && <td style={COL.count.td}>{u.cOther}</td>}
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
+              </div>
               </div>
             )}
 
