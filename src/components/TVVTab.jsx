@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { listDailySalesInMonth } from '../lib/db'
 import { analyzeSoSanLuong } from '../lib/soSanLuongLogic'
 import { diagnoseActivation, ACTIVE_IP_THRESHOLD } from '../lib/activationLogic'
+import { buildMilestones } from '../lib/milestoneLogic'
 
 const DIAG_GROUPS = [
   { id: 'chuaNop', label: 'Chưa nộp hồ sơ nào', color: '#c0243c', hint: 'Chưa có hồ sơ IF/PS/Pipeline nào trong tháng — vấn đề ở khâu tiếp cận khách, mở hàng.' },
@@ -131,6 +132,11 @@ export default function TVVTab({ data }) {
     return sortDir === 'desc' ? arr.reverse() : arr
   }, [filtered, sortField, sortDir])
 
+  // ── 🎯 Sắp chạm đích (PE / MDRT / thưởng quý — Lan duyệt 23/11/2026) ──
+  const [msFilter, setMsFilter] = useState('all')
+  const milestones = React.useMemo(() => buildMilestones(agList), [agList])
+  const msShown = msFilter === 'all' ? milestones.nearList : milestones.nearList.filter((x) => x.type === msFilter)
+
   const bachKim = agList.filter(a => String(a.peHienTai || '').includes('BẠCH KIM')).length
   const vang = agList.filter(a => String(a.peHienTai || '').toUpperCase().includes('VÀNG')).length
   const totalFyc = agList.reduce((s, a) => s + (parseFloat(a.fyc) || 0), 0)
@@ -196,6 +202,43 @@ export default function TVVTab({ data }) {
         </div>
       </div>
 
+      {/* ── 🎯 Sắp chạm đích — đích cao (PE/MDRT/thưởng quý), số theo AG-PE ── */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+          <span style={{ fontSize: 14, fontWeight: 800, color: '#1a1f5e' }}>🎯 Sắp chạm đích</span>
+          <span style={{ fontSize: 11.5, color: '#8896aa' }}>{milestones.counts.total} lượt TVV đang ở gần một đích — xếp theo số tiền còn thiếu tăng dần, ít nhất lên đầu</span>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {[['all', `Tất cả (${milestones.counts.total})`], ['pe', `💎 Lên hạng PE (${milestones.counts.pe})`], ['mdrt', `🏆 MDRT/COT/TOT (${milestones.counts.mdrt})`], ['quy', `💰 Tăng mức thưởng quý (${milestones.counts.quy})`]].map(([k, lbl]) => (
+            <button key={k} onClick={() => setMsFilter(k)}
+              style={{ background: msFilter === k ? '#4361ee' : '#f1f3f9', color: msFilter === k ? '#fff' : '#5b6478', border: '1px solid #dbe1ee', borderRadius: 99, padding: '5px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+        {msShown.length === 0 ? (
+          <div style={{ fontSize: 12, color: '#8896aa' }}>Chưa có TVV nào ở gần đích này theo file AG-PE hiện tại.</div>
+        ) : (
+          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+            {msShown.slice(0, 40).map((x, i) => (
+              <div key={`${x.msdl}-${x.type}-${i}`} style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '5px 0', borderBottom: '1px dashed #e3e8f2', fontSize: 12.5, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: '#fff', background: x.type === 'pe' ? '#7209b7' : x.type === 'mdrt' ? '#b45309' : '#0f9d58', borderRadius: 99, padding: '2px 8px' }}>
+                  {x.type === 'pe' ? '💎 PE' : x.type === 'mdrt' ? '🏆 MDRT' : '💰 THƯỞNG QUÝ'}
+                </span>
+                <span style={{ fontWeight: 700 }}>{x.name || x.msdl}</span>
+                <span style={{ color: '#8896aa' }}>{x.unit || '—'} · {x.msdl}</span>
+                <span>còn thiếu <b style={{ color: '#c0243c' }}>{formatNum(x.gap)}tr {x.gapUnit}</b> nữa là <b>{x.dich}</b></span>
+                {x.extra && <span style={{ fontWeight: 700, color: '#4361ee' }}>{x.extra}</span>}
+              </div>
+            ))}
+            {msShown.length > 40 && <div style={{ fontSize: 11.5, color: '#8896aa', paddingTop: 6 }}>… và {msShown.length - 40} lượt nữa (dùng nút lọc theo đích để xem riêng)</div>}
+          </div>
+        )}
+        <div style={{ fontSize: 11.5, color: '#8896aa', marginTop: 8 }}>
+          Số "còn thiếu" lấy thẳng từ file AG-PE kỳ gần nhất đã nạp (công ty tính sẵn) — không chạy theo Daily hằng ngày như mốc Active ở khối dưới.
+        </div>
+      </div>
+
       {/* ── ⑲ Chẩn đoán TVV chưa Active ── */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div onClick={() => setDiagOpen((o) => !o)} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', flexWrap: 'wrap' }}>
@@ -252,33 +295,35 @@ export default function TVVTab({ data }) {
                   </div>
                 )
               })()}
-              <div style={{ overflowX: 'auto' }}>
+              <div>
+                <div style={{ fontSize: 12.5, fontWeight: 800, color: '#1a1f5e', marginBottom: 6 }}>🎯 Unit theo đích đến <span style={{ fontWeight: 400, color: '#8896aa', fontSize: 11.5 }}>— thay bảng % Active cũ: mỗi Unit nên dồn lực vào đích nào (số theo AG-PE)</span></div>
+                <div style={{ overflowX: 'auto' }}>
                 <table className="data-table">
                   <thead>
                     <tr>
                       <th style={{ textAlign: 'left' }}>Unit</th>
-                      <th style={{ textAlign: 'center' }}>Tổng TVV</th>
-                      <th style={{ textAlign: 'center' }}>Đã Active</th>
-                      <th style={{ textAlign: 'center' }}>% Active</th>
-                      <th style={{ textAlign: 'center' }}>Chưa nộp</th>
-                      <th style={{ textAlign: 'center' }}>Kẹt pending</th>
-                      <th style={{ textAlign: 'center' }}>Nộp thưa</th>
+                      <th style={{ textAlign: 'left' }}>💎 Sắp lên hạng PE</th>
+                      <th style={{ textAlign: 'left' }}>🏆 MDRT / COT / TOT</th>
+                      <th style={{ textAlign: 'left' }}>💰 Sắp tăng mức thưởng quý</th>
+                      <th style={{ textAlign: 'center' }}>⭐ Vé Star Club tạm đạt</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {diag.result.byUnit.map((u) => (
+                    {milestones.byUnit.map((u) => (
                       <tr key={u.unit}>
                         <td style={{ fontWeight: 700 }}>{u.unit}</td>
-                        <td style={{ textAlign: 'center' }}>{u.total}</td>
-                        <td style={{ textAlign: 'center', color: '#0f9d58', fontWeight: 700 }}>{u.active}</td>
-                        <td style={{ textAlign: 'center' }}>{u.activePct}%</td>
-                        <td style={{ textAlign: 'center', color: '#c0243c', fontWeight: 600 }}>{u.chuaNop}</td>
-                        <td style={{ textAlign: 'center', color: '#b45309', fontWeight: 600 }}>{u.ketPending}</td>
-                        <td style={{ textAlign: 'center', color: '#4361ee', fontWeight: 600 }}>{u.nopThua}</td>
+                        <td>{u.peNear > 0 ? <>{u.peNear} người · thiếu {formatNum(u.peGapFyc)}tr FYC</> : '—'}</td>
+                        <td>{u.mdrtNear > 0 || u.mdrtDat > 0 ? <>{u.mdrtNear > 0 ? `${u.mdrtNear} người gần đích` : ''}{u.mdrtNear > 0 && u.mdrtDat > 0 ? ' · ' : ''}{u.mdrtDat > 0 ? `${u.mdrtDat} đã đạt` : ''}</> : '—'}</td>
+                        <td>{u.quyNear > 0 ? <>{u.quyNear} người{u.quyThuongTang > 0 ? ` · +${formatNum(u.quyThuongTang)}tr thưởng` : ''}</> : '—'}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 700, color: '#b45309' }}>{u.starVe > 0 ? u.starVe : '—'}</td>
                       </tr>
                     ))}
+                    {milestones.byUnit.length === 0 && (
+                      <tr><td colSpan={5} style={{ textAlign: 'center', color: '#8896aa' }}>Chưa có dữ liệu đích đến theo AG-PE.</td></tr>
+                    )}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           )
