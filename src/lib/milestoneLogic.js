@@ -73,6 +73,7 @@ export function buildMilestones(agList) {
         ...base, type: 'pe', dich: `lên ${ag.ketQuaTamTinh}`,
         gap: peGap, gapUnit: 'FYC',
         extra: thang > 0 ? `còn thiếu ${thang} tháng HĐ` : '',
+        thangCanThem: thang,
       })
       u.peNear += 1; u.peGapFyc += peGap; u.nearTotal += 1
     }
@@ -105,6 +106,7 @@ export function buildMilestones(agList) {
         ...base, type: 'quy', dich: 'tăng mức thưởng quý',
         gap: quyGap, gapUnit: 'FYC',
         extra: tang > 0 ? `+${tang}tr tiền thưởng` : '',
+        thuongTangThem: tang,
       })
       u.quyNear += 1; u.quyThuongTang += tang; u.nearTotal += 1
     }
@@ -128,4 +130,30 @@ export function buildMilestones(agList) {
     },
     byUnit,
   }
+}
+
+// ── Soạn tin đẩy TVV từ một mục "sắp chạm đích" (Lan chọn ý ③, 23/11/2026) ──
+// Số trong tin là số AG-PE kỳ gần nhất (cùng nguồn với danh sách trên UI).
+function fmtTr(n) {
+  const v = Math.round((Number(n) || 0) * 10) / 10
+  return Number.isInteger(v) ? String(v) : String(v).replace('.', ',')
+}
+
+export function composePushMessage(e) {
+  if (!e || !e.name) return ''
+  const gap = fmtTr(e.gap)
+  if (e.type === 'pe') {
+    let m = `Chào ${e.name} 👋 Theo số liệu kỳ PE mới nhất, bạn còn thiếu ${gap}tr FYC nữa là ${e.dich}. Rất gần rồi, cố thêm chút nữa nhé! Cần GA hỗ trợ hồ sơ nào cứ nhắn mình.`
+    if (e.thangCanThem > 0) m += ` Lưu ý thêm: bạn cũng cần thêm ${e.thangCanThem} tháng hoạt động (tháng có FYC từ 5tr) để đủ điều kiện lên hạng.`
+    return m
+  }
+  if (e.type === 'mdrt') {
+    return `Chào ${e.name} 👋 Bạn còn thiếu ${gap}tr FYP nữa là ${e.dich}. Tăng tốc về đích nhé — cần hỗ trợ gì cứ nhắn GA D07!`
+  }
+  if (e.type === 'quy') {
+    let m = `Chào ${e.name} 👋 Bạn còn thiếu ${gap}tr FYC nữa là tăng mức thưởng quý`
+    if (e.thuongTangThem > 0) m += `, tiền thưởng tăng thêm khoảng ${fmtTr(e.thuongTangThem)}tr`
+    return m + `. Cố lên nhé!`
+  }
+  return ''
 }

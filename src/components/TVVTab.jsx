@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { listDailySalesInMonth } from '../lib/db'
 import { analyzeSoSanLuong } from '../lib/soSanLuongLogic'
 import { diagnoseActivation, ACTIVE_IP_THRESHOLD } from '../lib/activationLogic'
-import { buildMilestones } from '../lib/milestoneLogic'
+import { buildMilestones, composePushMessage } from '../lib/milestoneLogic'
 
 const DIAG_GROUPS = [
   { id: 'chuaNop', label: 'Chưa nộp hồ sơ nào', color: '#c0243c', hint: 'Chưa có hồ sơ IF/PS/Pipeline nào trong tháng — vấn đề ở khâu tiếp cận khách, mở hàng.' },
@@ -136,6 +136,18 @@ export default function TVVTab({ data }) {
   const [msFilter, setMsFilter] = useState('all')
   const milestones = React.useMemo(() => buildMilestones(agList), [agList])
   const msShown = msFilter === 'all' ? milestones.nearList : milestones.nearList.filter((x) => x.type === msFilter)
+  // 💬 Soạn tin đẩy (ý ③): nháp tin nhắn theo số thật của từng TVV
+  const [pushDraft, setPushDraft] = useState(null)
+  const [pushCopied, setPushCopied] = useState(false)
+  const copyPushDraft = async () => {
+    if (!pushDraft) return
+    try { await navigator.clipboard.writeText(pushDraft.text); setPushCopied(true) }
+    catch {
+      const el = document.getElementById('push-draft-text')
+      if (el) { el.focus(); el.select(); try { document.execCommand('copy'); setPushCopied(true) } catch { /* bỏ qua */ } }
+    }
+    setTimeout(() => setPushCopied(false), 2000)
+  }
 
   const bachKim = agList.filter(a => String(a.peHienTai || '').includes('BẠCH KIM')).length
   const vang = agList.filter(a => String(a.peHienTai || '').toUpperCase().includes('VÀNG')).length
@@ -229,9 +241,24 @@ export default function TVVTab({ data }) {
                 <span style={{ color: '#8896aa' }}>{x.unit || '—'} · {x.msdl}</span>
                 <span>còn thiếu <b style={{ color: '#c0243c' }}>{formatNum(x.gap)}tr {x.gapUnit}</b> nữa là <b>{x.dich}</b></span>
                 {x.extra && <span style={{ fontWeight: 700, color: '#4361ee' }}>{x.extra}</span>}
+                <button onClick={() => { setPushDraft({ name: x.name || x.msdl, text: composePushMessage(x) }); setPushCopied(false) }}
+                  style={{ marginLeft: 'auto', background: '#eef4ff', color: '#4361ee', border: '1px solid #c7d4f5', borderRadius: 99, padding: '3px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  💬 Soạn tin
+                </button>
               </div>
             ))}
             {msShown.length > 40 && <div style={{ fontSize: 11.5, color: '#8896aa', paddingTop: 6 }}>… và {msShown.length - 40} lượt nữa (dùng nút lọc theo đích để xem riêng)</div>}
+          </div>
+        )}
+        {pushDraft && (
+          <div style={{ marginTop: 10, background: '#f6f9ff', border: '1px solid #d7e3ff', borderRadius: 12, padding: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#1a1f5e', marginBottom: 6 }}>💬 Tin nhắn gửi {pushDraft.name} — sửa thoải mái rồi copy mang sang Zalo:</div>
+            <textarea id="push-draft-text" value={pushDraft.text} onChange={(e) => setPushDraft({ ...pushDraft, text: e.target.value })}
+              rows={4} style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #dbe1ee', borderRadius: 8, padding: 8, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <button onClick={copyPushDraft} style={{ background: '#4361ee', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>{pushCopied ? '✓ Đã copy' : '📋 Copy tin nhắn'}</button>
+              <button onClick={() => setPushDraft(null)} style={{ background: '#fff', color: '#5b6478', border: '1px solid #dbe1ee', borderRadius: 8, padding: '6px 12px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>Đóng</button>
+            </div>
           </div>
         )}
         <div style={{ fontSize: 11.5, color: '#8896aa', marginTop: 8 }}>

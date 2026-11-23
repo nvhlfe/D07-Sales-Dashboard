@@ -14,7 +14,7 @@ import {
   buildOverviewExportAoa, buildTonExportAoa,
 } from '../lib/salesReportLogic'
 import html2canvas from 'html2canvas'
-import { analyzeSoSanLuong, groupPendingByReason, maskSensitive } from '../lib/soSanLuongLogic'
+import { analyzeSoSanLuong, groupPendingByReason, buildAgingPending, maskSensitive } from '../lib/soSanLuongLogic'
 import { formatNum } from '../utils/parseExcel'
 import ColumnToggle, { useVisibleColumns } from './ColumnToggle'
 
@@ -139,6 +139,77 @@ function PendingReasonGroups({ year, month }) {
               ))}
             </tbody>
           </table>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ⏰ Hồ sơ chờ lâu — nguy cơ hủy/CF (ý ② Lan chọn 23/11/2026): pending ≥10 ngày từ Daily,
+// xếp lâu nhất lên đầu; ≥14 ngày tô đỏ. Nguồn cùng analyzeSoSanLuong như khối lý do chờ.
+function AgingPendingBlock({ year, month }) {
+  const { isSuperAdmin } = useAuth()
+  const [st, setSt] = useState({ loading: true, asOf: null, aging: null, hasData: false })
+  useEffect(() => {
+    let alive = true
+    setSt((prev) => ({ ...prev, loading: true }))
+    listDailySalesInMonth(year, month)
+      .then((docs) => {
+        if (!alive) return
+        const analysis = analyzeSoSanLuong(docs, [], { year, month })
+        setSt({ loading: false, asOf: analysis.asOf, aging: buildAgingPending(analysis.pendingAll), hasData: analysis.hasData })
+      })
+      .catch(() => { if (alive) setSt({ loading: false, asOf: null, aging: null, hasData: false }) })
+    return () => { alive = false }
+  }, [year, month])
+
+  const fmtDM = (iso) => (iso && iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : '—')
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <div style={{ fontWeight: 800, fontSize: 13.5, color: '#1a1f5e', marginBottom: 2 }}>
+        ⏰ Hồ sơ chờ lâu — nguy cơ hủy/CF
+        {st.asOf ? <span style={{ fontWeight: 500, color: '#8896aa', fontSize: 11.5 }}> · theo Daily {st.asOf.slice(8, 10)}/{st.asOf.slice(5, 7)}</span> : null}
+      </div>
+      {st.loading ? (
+        <div style={{ fontSize: 12, color: '#8896aa' }}>Đang tải dữ liệu Daily…</div>
+      ) : !st.hasData || !st.aging ? (
+        <div style={{ fontSize: 12, color: '#8896aa' }}>Chưa có dữ liệu Daily của tháng này.</div>
+      ) : st.aging.count === 0 ? (
+        <div style={{ fontSize: 12, color: '#15803d', fontWeight: 600 }}>Không có hồ sơ nào chờ quá 10 ngày. 🎉</div>
+      ) : (
+        <>
+          <div style={{ fontSize: 11.5, color: '#8896aa', marginBottom: 8 }}>
+            <b style={{ color: '#c0243c' }}>{st.aging.count} hồ sơ</b> đã chờ từ 10 ngày trở lên (trong đó <b style={{ color: '#c0243c' }}>{st.aging.overdueCount} hồ sơ quá 14 ngày</b>) · tổng APE {formatNum(st.aging.totalApe)}tr. Xếp chờ lâu nhất lên đầu — ưu tiên xử lý các hồ sơ đỏ trước.
+          </div>
+          <div style={{ overflowX: 'auto', maxHeight: 380, overflowY: 'auto' }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }}>TVV</th>
+                  <th style={{ textAlign: 'left' }}>HSYC</th>
+                  <th style={{ textAlign: 'left' }}>Sản phẩm</th>
+                  <th style={{ textAlign: 'center' }}>Ngày nộp</th>
+                  <th style={{ textAlign: 'center' }}>Đã chờ</th>
+                  <th style={{ textAlign: 'left' }}>Lý do chờ</th>
+                  <th style={{ textAlign: 'right' }}>APE (tr)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {st.aging.list.slice(0, 40).map((c, ci) => (
+                  <tr key={(c.proposalNum || '') + '|' + c.msdl + '|' + ci}>
+                    <td><b>{c.name || c.msdl}</b><div style={{ fontSize: 10.5, color: '#8896aa' }}>{c.unit || '—'} · {c.msdl}</div></td>
+                    <td>{maskSensitive(c.proposalNum, isSuperAdmin)}</td>
+                    <td>{c.product || '—'}</td>
+                    <td style={{ textAlign: 'center' }}>{fmtDM(c.proposalDate)}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 800, color: c.ageDays >= 14 ? '#c0243c' : '#b45309' }}>{c.ageDays} ngày</td>
+                    <td style={{ fontSize: 11.5 }}>{c.reasons && c.reasons.length ? c.reasons.join('; ') : (c.description || '—')}</td>
+                    <td style={{ textAlign: 'right' }}>{formatNum(c.ape ?? c.ipSub)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {st.aging.count > 40 && <div style={{ fontSize: 11.5, color: '#8896aa', marginTop: 6 }}>… và {st.aging.count - 40} hồ sơ nữa</div>}
         </>
       )}
     </div>
@@ -1193,6 +1264,7 @@ export default function SalesReportTab() {
       {tab === 'pending' && !repLoading && (
         <div>
           <PendingReasonGroups year={year} month={month} />
+          <AgingPendingBlock year={year} month={month} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
             <span style={{ fontSize: 12, color: '#5a6b87' }}>
               Tất cả hồ sơ <b>chưa phát hành</b> trong tháng, xếp theo tuổi hồ sơ lâu nhất trước. Bấm <b>🟢 PH</b> để đánh dấu đã phát hành ngay tại đây.

@@ -324,3 +324,21 @@ export function maskSensitive(value, canSeeFull) {
   if (s.length <= 2) return s
   return `${'•'.repeat(Math.min(Math.max(s.length - 2, 2), 8))}${s.slice(-2)}`
 }
+
+// ── Hồ sơ chờ lâu — nguy cơ hủy/CF (Lan chọn ý ②, 23/11/2026) ──
+// Ngưỡng mặc định 10 ngày; từ 14 ngày coi là quá hạn. Chỉ tính hồ sơ có
+// tuổi chờ xác định được (ageDays là số); xếp lâu nhất lên đầu, hoà thì APE lớn trước.
+export const AGING_PENDING_MIN_DAYS = 10
+export const AGING_PENDING_OVERDUE_DAYS = 14
+
+export function buildAgingPending(pendingAll, minDays = AGING_PENDING_MIN_DAYS) {
+  const list = (pendingAll || [])
+    .filter((c) => typeof c.ageDays === 'number' && c.ageDays >= minDays)
+    .sort((a, b) => (b.ageDays - a.ageDays) || ((b.ape ?? b.ipSub ?? 0) - (a.ape ?? a.ipSub ?? 0)))
+  return {
+    list,
+    count: list.length,
+    totalApe: list.reduce((sum, c) => sum + (c.ape ?? c.ipSub ?? 0), 0),
+    overdueCount: list.filter((c) => c.ageDays >= AGING_PENDING_OVERDUE_DAYS).length,
+  }
+}
