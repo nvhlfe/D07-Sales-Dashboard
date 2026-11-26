@@ -476,6 +476,18 @@ export default function SalesReportTab() {
     bump()
   }
 
+  const editCasePolicy = (person, d, ci) => {
+    if (!requireEdit()) return
+    const item = person.daily[d]?.cases[ci]
+    if (!item) return
+    const val = window.prompt('Số hợp đồng (Policy Number) cho hồ sơ này — để trống nếu chưa có:', item.policyNum || '')
+    if (val === null) return
+    item.policyNum = val.trim()
+    queuePersonSave(person)
+    audit('update_policy', `${person.name} ngày ${d}: cập nhật số HĐ → ${item.policyNum || '(trống)'}`)
+    bump()
+  }
+
   const editCaseNote = (person, d, ci) => {
     if (!requireEdit()) return
     const item = person.daily[d]?.cases[ci]
@@ -532,10 +544,11 @@ export default function SalesReportTab() {
   const [cmFee, setCmFee] = useState('')
   const [cmStatus, setCmStatus] = useState('none')
   const [cmNote, setCmNote] = useState('')
+  const [cmPolicy, setCmPolicy] = useState('')
   const openCaseModal = (person, d) => {
     if (!requireEdit()) return
     setCaseModal({ person, day: d })
-    setCmFee(''); setCmStatus('none'); setCmNote('')
+    setCmFee(''); setCmStatus('none'); setCmNote(''); setCmPolicy('')
   }
   const saveModalCase = () => {
     if (!caseModal) return
@@ -543,7 +556,7 @@ export default function SalesReportTab() {
     if (!check.ok) { window.alert('⚠️ ' + check.msg); return }
     const { person, day } = caseModal
     if (!person.daily[day]) person.daily[day] = { cases: [] }
-    person.daily[day].cases.push({ fee: check.value, status: cmStatus, note: cmNote.trim() })
+    person.daily[day].cases.push({ fee: check.value, status: cmStatus, note: cmNote.trim(), policyNum: cmPolicy.trim() })
     queuePersonSave(person)
     audit('add_case', `${person.name} ngày ${day}: thêm hồ sơ ${Number(check.value || 0).toLocaleString('vi-VN')} VND (${cmStatus})`)
     setCaseModal(null)
@@ -559,6 +572,7 @@ export default function SalesReportTab() {
   const [acFee, setAcFee] = useState('')
   const [acStatus, setAcStatus] = useState('none')
   const [acNote, setAcNote] = useState('')
+  const [acPolicy, setAcPolicy] = useState('')
   const openAddCaseModal = () => {
     if (!requireEdit()) return
     let defaultDay = 1
@@ -567,7 +581,7 @@ export default function SalesReportTab() {
     else if (today.getFullYear() === year && today.getMonth() + 1 === month) defaultDay = today.getDate()
     setAcDay(Math.min(Math.max(defaultDay, 1), days))
     setAcSearch(''); setAcSelected(null); setAcDrop(false)
-    setAcFee(''); setAcStatus('none'); setAcNote('')
+    setAcFee(''); setAcStatus('none'); setAcNote(''); setAcPolicy('')
     setAcOpen(true)
   }
   const acCombined = useMemo(() => {
@@ -599,7 +613,7 @@ export default function SalesReportTab() {
         : `Thêm "${person.name}" (MSDL ${person.msdl}) từ danh sách TVV qua ＋HS`)
     }
     if (!person.daily[acDay]) person.daily[acDay] = { cases: [] }
-    person.daily[acDay].cases.push({ fee: check.value, status: acStatus, note: acNote.trim() })
+    person.daily[acDay].cases.push({ fee: check.value, status: acStatus, note: acNote.trim(), policyNum: acPolicy.trim() })
     queuePersonSave(person)
     audit('add_case', `${person.name} ngày ${acDay}: thêm hồ sơ ${Number(check.value || 0).toLocaleString('vi-VN')} VND (${acStatus}) qua ＋HS`)
     setAcOpen(false)
@@ -1434,6 +1448,8 @@ export default function SalesReportTab() {
                         <>
                           <button onClick={() => markIssuedFromPending(r)}
                             style={btnStyle('#06d6a0', '#fff')}>🟢 PH</button>{' '}
+                          <button onClick={() => editCasePolicy(r.person, r.d, r.ci)}
+                            style={btnStyle('#e0e7ff', '#3730a3')}>📄 HĐ</button>{' '}
                           <button onClick={() => deleteFromPending(r)}
                             style={btnStyle('#fee2e2', '#991b1b')}>🗑 Xoá</button>
                         </>
@@ -1483,6 +1499,9 @@ export default function SalesReportTab() {
                 <option value="paid">🟡 CP — Có phí, chưa phát hành</option>
                 <option value="issued">🟢 PH — Đã phát hành</option>
               </select>
+              <label className="sr-form-label">📄 Số HĐ (nếu đã có)</label>
+              <input type="text" className="sr-form-input" placeholder="VD: 76420978 — để trống nếu chưa có"
+                value={cmPolicy} onChange={(e) => setCmPolicy(e.target.value)} />
               <label className="sr-form-label">📝 Ghi chú</label>
               <textarea className="sr-form-input" rows="2" placeholder="Ghi chú thêm (tùy chọn)"
                 value={cmNote} onChange={(e) => setCmNote(e.target.value)} />
@@ -1548,6 +1567,9 @@ export default function SalesReportTab() {
                 <option value="paid">🟡 CP — Có phí, chưa phát hành</option>
                 <option value="issued">🟢 PH — Đã phát hành</option>
               </select>
+              <label className="sr-form-label">📄 Số HĐ (nếu đã có)</label>
+              <input type="text" className="sr-form-input" placeholder="VD: 76420978 — để trống nếu chưa có"
+                value={acPolicy} onChange={(e) => setAcPolicy(e.target.value)} />
               <label className="sr-form-label">📝 Ghi chú</label>
               <textarea className="sr-form-input" rows="2" placeholder="Ghi chú thêm (tùy chọn)"
                 value={acNote} onChange={(e) => setAcNote(e.target.value)} />
