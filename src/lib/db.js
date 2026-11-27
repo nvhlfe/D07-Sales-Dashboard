@@ -471,18 +471,21 @@ export async function logAuditEntry({ month, action, detail, user }) {
   })
 }
 
-/** Đọc audit log của 1 tháng (mới nhất trước) cho màn hình Lịch sử thao tác. */
+/** Đọc audit log của 1 tháng (mới nhất trước) cho màn hình Lịch sử thao tác.
+ *  Truy vấn CHỈ lọc theo month (index đơn có sẵn) rồi sắp xếp phía client —
+ *  bản cũ dùng thêm orderBy('at') khiến Firestore đòi composite index,
+ *  truy vấn lỗi lặng và màn hình luôn báo trống. Lỗi (nếu có) được trả ra
+ *  qua field `error` để màn hình hiển thị thay vì báo trống sai. */
 export function useAuditLog(monthKey) {
-  const [state, setState] = useState({ entries: [], loading: true })
+  const [state, setState] = useState({ entries: [], loading: true, error: null })
   useEffect(() => {
-    if (!monthKey) { setState({ entries: [], loading: false }); return }
+    if (!monthKey) { setState({ entries: [], loading: false, error: null }); return }
     let unsub = null
     try {
       const { fs } = getFirebase()
       const q = query(
         collection(fs, 'audit_log'),
         where('month', '==', monthKey),
-        orderBy('at', 'desc'),
         limit(300)
       )
       unsub = onSnapshot(
@@ -490,13 +493,22 @@ export function useAuditLog(monthKey) {
         (snap) => {
           const entries = []
           snap.forEach((d) => entries.push({ id: d.id, ...d.data() }))
-          setState({ entries, loading: false })
+          const ts = (e) => {
+            const at = e.at
+            if (!at) return 0
+            if (typeof at.toDate === 'function') { try { return at.toDate().getTime() } catch { return 0 } }
+            if (typeof at.seconds === 'number') return at.seconds * 1000
+            const t = new Date(at).getTime()
+            return isNaN(t) ? 0 : t
+          }
+          entries.sort((a, b) => ts(b) - ts(a))
+          setState({ entries, loading: false, error: null })
         },
-        (err) => { console.error('[db] useAuditLog:', err); setState((s) => ({ ...s, loading: false })) }
+        (err) => { console.error('[db] useAuditLog:', err); setState((s) => ({ ...s, loading: false, error: String(err?.message || err) })) }
       )
     } catch (e) {
       console.error('[db] useAuditLog:', e)
-      setState((s) => ({ ...s, loading: false }))
+      setState((s) => ({ ...s, loading: false, error: String(e?.message || e) }))
     }
     return () => { if (unsub) unsub() }
   }, [monthKey])

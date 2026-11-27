@@ -241,7 +241,7 @@ export default function SalesReportTab() {
   }
   const { data: repDoc, source: repSource, loading: repLoading } = useReportsDoc(year, month)
   const { items: tvvRemote } = useTvvDirectory()
-  const { entries: auditEntries, loading: auditLoading } = useAuditLog(`${year}-${month}`)
+  const { entries: auditEntries, loading: auditLoading, error: auditError } = useAuditLog(`${year}-${month}`)
 
   const userRef = useRef(user)
   useEffect(() => { userRef.current = user }, [user])
@@ -1870,9 +1870,14 @@ export default function SalesReportTab() {
                   </div>
                 </div>
               ))}
-              {!auditLoading && !auditShown.length && (
+              {!auditLoading && !!auditError && (
+                <div style={{ fontSize: 12, color: '#b91c1c', padding: '12px 0' }}>
+                  ⚠️ Không đọc được nhật ký thao tác: {auditError}
+                </div>
+              )}
+              {!auditLoading && !auditError && !auditShown.length && (
                 <div style={{ fontSize: 12, color: '#8896aa', padding: '12px 0' }}>
-                  Chưa có thay đổi nào được ghi nhận trong tháng {month}/{year} (hoặc tài khoản Google chưa có quyền đọc collection audit_log).
+                  Chưa có thay đổi nào được ghi nhận trong tháng {month}/{year}.
                 </div>
               )}
             </div>
