@@ -476,15 +476,25 @@ export default function SalesReportTab() {
     bump()
   }
 
-  const editCasePolicy = (person, d, ci) => {
+  // ── Form nhập Số HĐ (thay hộp thoại prompt để quét tự động nhập được) ──
+  const [policyModal, setPolicyModal] = useState(null) // { person, d, ci }
+  const [pmValue, setPmValue] = useState('')
+  const openPolicyModal = (r) => {
     if (!requireEdit()) return
-    const item = person.daily[d]?.cases[ci]
+    const item = r.person.daily[r.d]?.cases[r.ci]
     if (!item) return
-    const val = window.prompt('Số hợp đồng (Policy Number) cho hồ sơ này — để trống nếu chưa có:', item.policyNum || '')
-    if (val === null) return
-    item.policyNum = val.trim()
+    setPolicyModal({ person: r.person, d: r.d, ci: r.ci })
+    setPmValue(item.policyNum || '')
+  }
+  const savePolicyModal = () => {
+    if (!policyModal) return
+    const { person, d, ci } = policyModal
+    const item = person.daily[d]?.cases[ci]
+    if (!item) { setPolicyModal(null); return }
+    item.policyNum = pmValue.trim()
     queuePersonSave(person)
     audit('update_policy', `${person.name} ngày ${d}: cập nhật số HĐ → ${item.policyNum || '(trống)'}`)
+    setPolicyModal(null)
     bump()
   }
 
@@ -1448,7 +1458,7 @@ export default function SalesReportTab() {
                         <>
                           <button onClick={() => markIssuedFromPending(r)}
                             style={btnStyle('#06d6a0', '#fff')}>🟢 PH</button>{' '}
-                          <button onClick={() => editCasePolicy(r.person, r.d, r.ci)}
+                          <button onClick={() => openPolicyModal(r)}
                             style={btnStyle('#e0e7ff', '#3730a3')}>📄 HĐ</button>{' '}
                           <button onClick={() => deleteFromPending(r)}
                             style={btnStyle('#fee2e2', '#991b1b')}>🗑 Xoá</button>
@@ -1506,6 +1516,28 @@ export default function SalesReportTab() {
               <textarea className="sr-form-input" rows="2" placeholder="Ghi chú thêm (tùy chọn)"
                 value={cmNote} onChange={(e) => setCmNote(e.target.value)} />
               <button className="sr-save-btn" onClick={saveModalCase}>💾 Lưu hồ sơ</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: nhập Số HĐ ── */}
+      {policyModal && (
+        <div className="modal-overlay" onClick={() => setPolicyModal(null)}>
+          <div className="modal-box" style={{ width: 380 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">📄 Số hợp đồng</div>
+              <button className="modal-close" onClick={() => setPolicyModal(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ fontSize: 12, color: '#5a6b87', marginBottom: 12 }}>
+                <b>{policyModal.person.name}</b> — Ngày {policyModal.d}/{month}/{year}
+              </div>
+              <label className="sr-form-label">📄 Số HĐ (Policy Number)</label>
+              <input type="text" className="sr-form-input" placeholder="VD: 76421432 — để trống nếu chưa có"
+                value={pmValue} onChange={(e) => setPmValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') savePolicyModal() }} autoFocus />
+              <button className="sr-save-btn" onClick={savePolicyModal}>💾 Lưu số HĐ</button>
             </div>
           </div>
         </div>
