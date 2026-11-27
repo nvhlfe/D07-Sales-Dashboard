@@ -241,7 +241,7 @@ export default function SalesReportTab() {
   }
   const { data: repDoc, source: repSource, loading: repLoading } = useReportsDoc(year, month)
   const { items: tvvRemote } = useTvvDirectory()
-  const { entries: auditEntries } = useAuditLog(`${year}-${month}`)
+  const { entries: auditEntries, loading: auditLoading } = useAuditLog(`${year}-${month}`)
 
   const userRef = useRef(user)
   useEffect(() => { userRef.current = user }, [user])
@@ -1862,7 +1862,7 @@ export default function SalesReportTab() {
             <div className="modal-body">
               {auditLoading && <div style={{ fontSize: 12, color: '#8896aa' }}>Đang tải...</div>}
               {!auditLoading && !!auditShown.length && auditShown.map((e, i) => (
-                <div key={e._id || i} style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: '1px solid #f3f4f6' }}>
+                <div key={e.id || i} style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: '1px solid #f3f4f6' }}>
                   <div style={{ fontSize: 16 }}>{ACTION_ICON[e.action] || '•'}</div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 12.5 }}>{e.detail || e.action}</div>
